@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Buy License</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    select, input, button { padding: 8px; margin: 5px; }
+    #result { margin-top: 20px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>Buy a License</h2>
+  
+  <label for="licenseType">Choose License Type:</label>
+  <select id="licenseType">
+    <option value="trial">Trial</option>
+    <option value="standard">Standard</option>
+    <option value="premium">Premium</option>
+    <option value="enterprise">Enterprise</option>
+  </select>
+  
+  <br/>
+  
+  <label for="userId">User ID:</label>
+  <input type="text" id="userId" placeholder="Enter your user ID"/>
+  
+  <br/>
+  
+  <button onclick="buyLicense()">Buy License</button>
+  
+  <div id="result"></div>
+  
+  <script>
+    async function buyLicense() {
+      const type = document.getElementById("licenseType").value;
+      const userId = document.getElementById("userId").value;
+      const resultDiv = document.getElementById("result");
+
+      try {
+        const res = await fetch("http://localhost:3001/license/buy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type, institutionId:userId }),
+        });
+
+        const result = await res.json();
+        const data = result.data;
+        if (res.ok) {
+          resultDiv.innerHTML = `
+            ✅ License request created.<br/>
+            License ID: ${data.licenseId}<br/>
+            Order ID: ${data.orderId}<br/>
+            State: ${data.state}<br/>
+            <a href="${data.redirectUrl}" target="_blank">➡️ Pay Now</a>
+          `;
+        } else {
+          resultDiv.innerHTML = `❌ Error: ${data.error}`;
+        }
+      } catch (err) {
+        resultDiv.innerHTML = `❌ Request failed: ${err.message}`;
+      }
+    }
+  </script>
+</body>
+</html>
