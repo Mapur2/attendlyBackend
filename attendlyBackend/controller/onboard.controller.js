@@ -6,11 +6,13 @@ const { completeStep } = require("../utils/onBoardingService.js");
 const { Ip } = require("../db/connectDb.js");
 const ApiResponse = require("../utils/ApiResponse.js");
 const path = require("path");
+const fs = require("fs/promises");
 const { uploadImageBuffer } = require("../utils/cloudinary.js");
 const { User } = require("../db/connectDb.js");
 
 const readFromKml = asyncHandler(async (req, res) => {
     const kmlPath = req?.file?.path;
+    console.log(req?.file)
     if (!kmlPath) {
         throw new ApiError(400, "KML file is required");
     }
@@ -86,31 +88,37 @@ const studentFaceDetect = asyncHandler(async (req, res) => {
     const faceServiceBase = process.env.FACE_SERVICE_URL || "http://127.0.0.1:8000";
     const endpoint = `${faceServiceBase.replace(/\/$/, "")}/detect-face`;
 
-    // 1) Forward to Python for single-face validation (no Cloudinary upload yet)
-    // Use native fetch/FormData/Blob (Node 18+)
-    const formData = new FormData();
-    const blob = new Blob([file.buffer], { type: file.mimetype || "image/jpeg" });
-    formData.append("file", blob, file.originalname || "image.jpg");
-
-    const resp = await fetch(endpoint, { method: "POST", body: formData });
-    const data = await resp.json().catch(() => ({}));
-    console.log(data)
-    if (!data.ok) {
-        throw new ApiError(400, data?.detail || "Face not valid");
-    }
-
-    // 2) If detection succeeded, upload image to Cloudinary and mark onboarded
+    const filePath = file.path;
     let imageUrl = null;
-    if (data?.ok === true) {
-        const uploadRes = await uploadImageBuffer(file.buffer, file.originalname || "image.jpg")
-        imageUrl = uploadRes.secure_url
-        if (!imageUrl) throw new ApiError(500, "Failed to upload image")
-        await User.update({ faceImageUrl: imageUrl }, { where: { id: req.user.id } })
-        await User.update({ isOnboarded: true }, { where: { id: req.user.id } });
-    }
+    try {
+        // 1) Forward to Python for single-face validation using the saved file
+        const buffer = await fs.readFile(filePath);
+        const formData = new FormData();
+        const blob = new Blob([buffer], { type: file.mimetype || "image/jpeg" });
+        formData.append("file", blob, file.originalname || "image.jpg");
 
-    const payload = { ...data, imageUrl }
-    return res.status(200).json(new ApiResponse(200, payload, data.ok ? "Face detected" : "Face not valid"));
+        const resp = await fetch(endpoint, { method: "POST", body: formData });
+        const data = await resp.json().catch(() => ({}));
+        console.log(data)
+        if (!data.ok) {
+            throw new ApiError(400, data?.detail || "Face not valid");
+        }
+
+        // 2) If detection succeeded, upload image to Cloudinary and mark onboarded
+        if (data?.ok === true) {
+            const uploadRes = await uploadImageBuffer(buffer, file.originalname || "image.jpg")
+            imageUrl = uploadRes.secure_url
+            if (!imageUrl) throw new ApiError(500, "Failed to upload image")
+            await User.update({ faceImageUrl: imageUrl, isOnboarded: true }, { where: { id: req.user.id } })
+        }
+
+        const payload = { ...data, imageUrl }
+        return res.status(200).json(new ApiResponse(200, payload, data.ok ? "Face detected" : "Face not valid"));
+    } finally {
+        if (filePath) {
+            try { await fs.unlink(filePath); } catch (_) {}
+        }
+    }
 });
 
 module.exports = { readFromKml, addWifiDetails, studentFaceDetect };

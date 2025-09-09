@@ -31,7 +31,7 @@ app.get("/", (req, res) => {
 })
 
 connectDb().then(() => {
-    app.listen(port, "0.0.0.0" ,() => {
+    app.listen(port ,() => {
         console.log(`Server running at http://0.0.0.0:${port}`);
     });
 })

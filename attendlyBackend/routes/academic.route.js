@@ -1,5 +1,5 @@
 const express = require('express');
-const { createDepartment, listDepartments, addYear, listYears, addSubject, listSubjects } = require('../controller/academic.controller');
+const { createDepartment, listDepartments, addYear, listYears, addSubject, listSubjects, getCampuses } = require('../controller/academic.controller');
 const authMiddleware = require('../middleware/authLayer');
 const licenseAuth = require('../middleware/licenseLayer');
 
@@ -14,6 +14,7 @@ router.get('/years', authMiddleware, licenseAuth(["admin","teacher","student"]),
 router.post('/subjects', authMiddleware, licenseAuth(["admin"]), addSubject);
 router.get('/subjects', authMiddleware, licenseAuth(["admin","teacher","student"]), listSubjects);
 
+router.get('/campuses', authMiddleware, licenseAuth(["admin","teacher","student"]), getCampuses);
 module.exports = router;
 
 

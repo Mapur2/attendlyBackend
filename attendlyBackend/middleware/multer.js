@@ -1,6 +1,12 @@
 const multer = require("multer")
-// Use memory storage so buffers are available on req.file.buffer
-const storage = multer.memoryStorage()
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, './public')
+    },
+    filename: function (req, file, cb) {
+        cb(null, file.originalname)
+    }
+})
 
 const upload = multer({ 
     storage: storage 

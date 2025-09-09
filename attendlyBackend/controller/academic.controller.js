@@ -3,6 +3,17 @@ const ApiResponse = require("../utils/ApiResponse");
 const asyncHandler = require("../utils/asyncHandler");
 const { Department, Year, Subject, Campus } = require("../db/connectDb.js");
 
+const getCampuses = asyncHandler(async (req, res) => {
+  const { institutionId } = req.query || {};
+  const where = {};
+
+  // Single institution only: prefer explicit query param, fallback to user's institution
+  where.institutionId = institutionId || req.user?.institutionId;
+
+  const campuses = await Campus.findAll({ where, attributes: { exclude: ["coordinates"] } });
+  return res.json(new ApiResponse(200, { campuses }, "Campuses fetched"));
+});
+
 // Departments
 const createDepartment = asyncHandler(async (req, res) => {
   const { name, departmentCode, campusId } = req?.body || {};
@@ -58,6 +69,7 @@ const listSubjects = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  getCampuses,
   createDepartment,
   listDepartments,
   addYear,
