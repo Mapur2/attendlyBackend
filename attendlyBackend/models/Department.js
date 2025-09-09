@@ -26,6 +26,14 @@ const createDepartmentModel = (sequelize) => {
         },
         allowNull: false,
       },
+      campusId: {
+        type: DataTypes.UUID,
+        references: {
+          model: "Campuses",
+          key: "id",
+        },
+        allowNull: true,
+      },
     },
     {
       timestamps: true,

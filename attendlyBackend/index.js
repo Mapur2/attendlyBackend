@@ -18,10 +18,12 @@ app.use(cookieParser());
 const authRoutes = require('./routes/auth.route.js');
 const licenseRoutes = require('./routes/license.route.js');
 const onboardingRoutes = require("./routes/onboard.route.js")
+const academicRoutes = require('./routes/academic.route.js')
 
 app.use('/auth', authRoutes);
 app.use('/license', licenseRoutes);
 app.use("/onboard",onboardingRoutes)
+app.use('/academic', academicRoutes)
 
 connectDb().then(() => {
     app.listen(port, () => {

@@ -44,6 +44,10 @@ const createUserModel = (sequelize) => {
       phone: {
         type: DataTypes.STRING,
       },
+      faceImageUrl: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
       isOnboarded:{
         type:DataTypes.BOOLEAN,
         defaultValue:false

@@ -4,6 +4,8 @@ const createInstitutionModel = require("../models/Institution.js")
 const createUserModel = require("../models/User.js");
 const createLicenseModel = require('../models/License.js');
 const createDepartmentModel = require('../models/Department.js');
+const createYearModel = require('../models/Year.js');
+const createSubjectModel = require('../models/Subject.js');
 const createCampusModel = require("../models/Campus.js")
 const createIpModel = require("../models/Ip.js")
 
@@ -18,8 +20,8 @@ const Institution = createInstitutionModel(sequelize);
 const User = createUserModel(sequelize);
 const License = createLicenseModel(sequelize);
 const Department = createDepartmentModel(sequelize)
-const Year = createDepartmentModel(sequelize)
-const Subject = createDepartmentModel(sequelize)
+const Year = createYearModel(sequelize)
+const Subject = createSubjectModel(sequelize)
 const Campus = createCampusModel(sequelize)
 const Ip = createIpModel(sequelize)
 
@@ -30,6 +32,9 @@ Institution.hasMany(User, { foreignKey: "institutionId" });
 User.belongsTo(Institution, { foreignKey: "institutionId" });
 Institution.hasMany(Department, { foreignKey: "institutionId" });
 Department.belongsTo(Institution, { foreignKey: "institutionId" });
+
+Campus.hasMany(Department, { foreignKey: "campusId" });
+Department.belongsTo(Campus, { foreignKey: "campusId" });
 
 Department.hasMany(Year, { foreignKey: "departmentId" });
 Year.belongsTo(Department, { foreignKey: "departmentId" });
