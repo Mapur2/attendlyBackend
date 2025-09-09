@@ -75,7 +75,6 @@ const addWifiDetails = asyncHandler(async (req, res) => {
 });
 
 
-// exports moved to bottom
 
 // Student onboarding - face detection proxy to Python service (store in Cloudinary)
 const studentFaceDetect = asyncHandler(async (req, res) => {
@@ -87,14 +86,7 @@ const studentFaceDetect = asyncHandler(async (req, res) => {
     const faceServiceBase = process.env.FACE_SERVICE_URL || "http://127.0.0.1:8000";
     const endpoint = `${faceServiceBase.replace(/\/$/, "")}/detect-face`;
 
-    // 1) Upload to Cloudinary and save URL to user
-    const uploadRes = await uploadImageBuffer(file.buffer, file.originalname || "image.jpg")
-    const imageUrl = uploadRes.secure_url
-    if (!imageUrl) throw new ApiError(500, "Failed to upload image")
-
-    await User.update({ faceImageUrl: imageUrl }, { where: { id: req.user.id } })
-
-    // 2) Forward to Python for single-face validation
+    // 1) Forward to Python for single-face validation (no Cloudinary upload yet)
     // Use native fetch/FormData/Blob (Node 18+)
     const formData = new FormData();
     const blob = new Blob([file.buffer], { type: file.mimetype || "image/jpeg" });
@@ -102,43 +94,23 @@ const studentFaceDetect = asyncHandler(async (req, res) => {
 
     const resp = await fetch(endpoint, { method: "POST", body: formData });
     const data = await resp.json().catch(() => ({}));
+    console.log(data)
+    if (!data.ok) {
+        throw new ApiError(400, data?.detail || "Face not valid");
+    }
 
-    if (!resp.ok) {
-        throw new ApiError(resp.status || 500, data?.detail || "Face service error");
+    // 2) If detection succeeded, upload image to Cloudinary and mark onboarded
+    let imageUrl = null;
+    if (data?.ok === true) {
+        const uploadRes = await uploadImageBuffer(file.buffer, file.originalname || "image.jpg")
+        imageUrl = uploadRes.secure_url
+        if (!imageUrl) throw new ApiError(500, "Failed to upload image")
+        await User.update({ faceImageUrl: imageUrl }, { where: { id: req.user.id } })
+        await User.update({ isOnboarded: true }, { where: { id: req.user.id } });
     }
 
     const payload = { ...data, imageUrl }
     return res.status(200).json(new ApiResponse(200, payload, data.ok ? "Face detected" : "Face not valid"));
 });
 
-module.exports.studentFaceDetect = studentFaceDetect;
-
-// Verify face: compare uploaded image with saved Cloudinary URL for the user
-const studentVerifyFace = asyncHandler(async (req, res) => {
-    const file = req?.file;
-    if (!file) throw new ApiError(400, "Image file is required");
-
-    const me = await User.findByPk(req.user.id)
-    if (!me || !me.faceImageUrl) throw new ApiError(400, "No reference face stored")
-
-    const faceServiceBase = process.env.FACE_SERVICE_URL || "http://127.0.0.1:8000";
-    const endpoint = `${faceServiceBase.replace(/\/$/, "")}/verify-face`;
-
-    const formData = new FormData();
-    const blob = new Blob([file.buffer], { type: file.mimetype || "image/jpeg" });
-    formData.append("file", blob, file.originalname || "image.jpg");
-    formData.append("url", me.faceImageUrl)
-
-    const resp = await fetch(endpoint, { method: "POST", body: formData });
-    const data = await resp.json().catch(() => ({}));
-
-    if (!resp.ok) {
-        throw new ApiError(resp.status || 500, data?.detail || "Face service error");
-    }
-
-    return res.status(200).json(new ApiResponse(200, data, data.verified ? "Face verified" : "Face not matched"));
-})
-
-module.exports.studentVerifyFace = studentVerifyFace;
-
-module.exports = { readFromKml, addWifiDetails, studentFaceDetect, studentVerifyFace };
+module.exports = { readFromKml, addWifiDetails, studentFaceDetect };

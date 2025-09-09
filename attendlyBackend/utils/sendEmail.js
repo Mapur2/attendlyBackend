@@ -24,7 +24,7 @@ const sendEmail = async (userEmail, content) => {
         </head>
         <body>
           <div class="header">
-            <h1>Welcome to Attenly</h1>
+            <h1>Welcome to Attendly</h1>
           </div>
           <div class="content">
             <p>Dear Customer,</p>
@@ -43,8 +43,8 @@ const sendEmail = async (userEmail, content) => {
     let message = {
       from: process.env.EMAIL,          
       to: userEmail,                   
-      subject: "StoreEdge Notification",
-      text: `Hello, ${userEmail}. Welcome to StoreEdge!`, 
+      subject: "Attendly Notification",
+      text: `Hello, ${userEmail}. Welcome to Attendly!`, 
       html: htmlBody,                  
     };
 

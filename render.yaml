@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: attendly-backend
+    rootDir: attendlyBackend
+    env: docker
+    dockerfilePath: attendlyBackend/Dockerfile
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: attendly-redis
+          property: connectionString
+      - key: FACE_SERVICE_URL
+        fromService:
+          type: web
+          name: attendly-face-service
+          property: url
+      - key: CLOUDINARY_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ALLOW_LOCALHOST_IP
+        value: "false"
+    healthCheckPath: /
+
+  - type: web
+    name: attendly-face-service
+    rootDir: attendlyFaceRecognitionService
+    env: docker
+    dockerfilePath: attendlyFaceRecognitionService/Dockerfile
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8000
+    healthCheckPath: /docs
+
+databases:
+  - name: attendly-redis
+    plan: free
+    ipAllowList: []
+
+
