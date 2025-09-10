@@ -112,7 +112,7 @@ const registerStudentTeacher = asyncHandler(async (req, res) => {
         throw new ApiError(500, "Something went wrong while sending email");
 
 
-    res.status(201).json(new ApiResponse(201, { user: newUser, token }, 'Student registered successfully. Please verify your email using OTP.'));
+    res.status(201).json(new ApiResponse(201, { user: newUser, accessToken:token }, 'Student registered successfully. Please verify your email using OTP.'));
 });
 
 
