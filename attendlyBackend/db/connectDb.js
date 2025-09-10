@@ -8,6 +8,7 @@ const createYearModel = require('../models/Year.js');
 const createSubjectModel = require('../models/Subject.js');
 const createCampusModel = require("../models/Campus.js")
 const createIpModel = require("../models/Ip.js")
+const createAttendanceModel = require("../models/Attendance.js")
 
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: "postgres",
@@ -24,6 +25,7 @@ const Year = createYearModel(sequelize)
 const Subject = createSubjectModel(sequelize)
 const Campus = createCampusModel(sequelize)
 const Ip = createIpModel(sequelize)
+const Attendance = createAttendanceModel(sequelize)
 
 // Associations
 Institution.hasMany(License, { foreignKey: "institutionId" });
@@ -62,3 +64,4 @@ const connectDb = async () => {
 };
 
 module.exports =  { sequelize, connectDb, Institution, User, Institution, License, Department,Year, Subject, Campus, Ip };
+module.exports.Attendance = Attendance;

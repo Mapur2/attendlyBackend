@@ -28,7 +28,7 @@ const createUserModel = (sequelize) => {
         allowNull: false,
       },
       role: {
-        type: DataTypes.ENUM("student", "faculty", "admin"),
+        type: DataTypes.ENUM("student", "teacher", "admin"),
         defaultValue: "student",
       },
       institutionId: {
