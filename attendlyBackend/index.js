@@ -4,7 +4,9 @@ const app = express();
 const port = process.env.PORT || 3001;
 const cookieParser = require('cookie-parser');
 const { connectDb } = require('./db/connectDb.js');
-const cors = require("cors")
+const cors = require("cors");
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./swagger');
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -24,10 +26,24 @@ const teacherRoutes = require('./routes/teacher.route.js')
 
 app.use('/auth', authRoutes);
 app.use('/license', licenseRoutes);
-app.use("/onboard",onboardingRoutes)
+app.use("/onboard", onboardingRoutes)
 app.use('/academic', academicRoutes)
 app.use("/student", studentRoutes)
 app.use('/teacher', teacherRoutes)
+
+// Swagger Documentation
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: "Attendly API Documentation",
+    customfavIcon: "/favicon.ico"
+}));
+
+// Raw OpenAPI spec in JSON format
+app.get('/docs.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
+});
+
 app.get("/", (req, res) => {
     res.send("Attendly Backend is running");
 })
