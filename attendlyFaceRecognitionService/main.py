@@ -1,85 +1,94 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
 import tempfile
-# from deepface import DeepFace
 import os
-from typing import Optional
-import face_recognition
 import requests
 from io import BytesIO
 from PIL import Image
 import numpy as np
-import os
+import cv2
 from datetime import datetime
 
-app = FastAPI(title="Single-Face Verification")
+from insightface.app import FaceAnalysis
 
-# def save_upload_to_tempfile(upload_file: UploadFile) -> str:
-#     """Save UploadFile to a temporary file and return path."""
-#     suffix = os.path.splitext(upload_file.filename)[1] or ".jpg"
-#     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-#         tmp.write(upload_file.file.read())
-#         tmp.flush()
-#         return tmp.name
+# ============================================================
+# APP INIT
+# ============================================================
 
+app = FastAPI(
+    title="Single-Face Verification Service",
+    version="1.0.0"
+)
 
-# @app.post("/verify-face")
-# async def verify_face(
-#     file: UploadFile = File(None),
-#     url: str = Form(None)
-# ):
-#     """
-#     Verify uploaded face or a provided URL against the default reference image.
-#     Either 'file' or 'url' must be provided.
-#     """
-#     if not file and not url:
-#         raise HTTPException(status_code=400, detail="Either 'file' or 'url' must be provided.")
+# ============================================================
+# LOAD INSIGHTFACE MODEL (CPU ONLY)
+# ============================================================
 
-#     tmp_path = None
-#     try:
-#         # Save file or download URL
-#         if file:
-#             tmp_path = save_upload_to_tempfile(file)
+face_app = FaceAnalysis(
+    name="buffalo_l",                      # ✅ includes detection + recognition
+    providers=["CPUExecutionProvider"]     # CPU-safe
+)
 
-#         # Compare with reference image
-#         if file and url:
-#             result = DeepFace.verify(tmp_path, url, enforce_detection=True)
-#         elif file and not url:
-#             # If only a file is provided, ensure exactly one face is detectable
-#             faces = DeepFace.extract_faces(img_path = tmp_path, enforce_detection = True)
-#             result = {"verified": False, "threshold": None, "distance": None, "details": {"num_faces": len(faces)}}
-#         else:
-#             # Only URL provided – ensure detectability against itself (sanity check)
-#             faces = DeepFace.extract_faces(img_path = url, enforce_detection = True)
-#             result = {"verified": False, "threshold": None, "distance": None, "details": {"num_faces": len(faces)}}
+face_app.prepare(
+    ctx_id=-1,                             # CPU only
+    det_size=(640, 640)                    # REQUIRED
+)
 
-#         return JSONResponse({
-#             "verified": result["verified"],
-#             "distance": result.get("distance"),
-#             "threshold": result.get("threshold"),
-#             "details": result
-#         })
+# ============================================================
+# UTILITIES
+# ============================================================
 
-#     except ValueError as e:
-#         raise HTTPException(status_code=400, detail=f"Face detection failed: {e}")
-#     finally:
-#         if tmp_path and os.path.exists(tmp_path):
-#             try:
-#                 os.remove(tmp_path)
-#             except Exception:
-#                 pass
-
-def load_image(path_or_url: str):
-    """Load image from URL or local path into numpy array."""
+def load_image(path_or_url: str) -> np.ndarray:
+    """
+    Load image from URL or local path → RGB numpy array
+    """
     if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
-        response = requests.get(path_or_url)
-        if response.status_code != 200:
-            raise HTTPException(status_code=400, detail=f"Failed to fetch image from URL: {path_or_url}")
-        return np.array(Image.open(BytesIO(response.content)))
-    elif os.path.exists(path_or_url):
-        return face_recognition.load_image_file(path_or_url)
-    else:
-        raise HTTPException(status_code=400, detail=f"Invalid image path: {path_or_url}")
+        r = requests.get(path_or_url, timeout=10)
+        if r.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to fetch image from URL")
+        img = Image.open(BytesIO(r.content)).convert("RGB")
+        return np.array(img)
+
+    if os.path.exists(path_or_url):
+        img = Image.open(path_or_url).convert("RGB")
+        return np.array(img)
+
+    raise HTTPException(status_code=400, detail="Invalid image path")
+
+
+def get_single_face_embedding(image: np.ndarray) -> np.ndarray:
+    """
+    Detect exactly ONE face and return its embedding
+    """
+    faces = face_app.get(image)
+
+    if len(faces) == 0:
+        raise HTTPException(status_code=400, detail="No face detected")
+    if len(faces) > 1:
+        raise HTTPException(status_code=400, detail="Multiple faces detected")
+
+    return faces[0].embedding
+
+
+def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    """
+    Compute cosine similarity between two embeddings
+    """
+    a = a / np.linalg.norm(a)
+    b = b / np.linalg.norm(b)
+    return float(np.dot(a, b))
+
+@app.get("/")
+def server_running():
+    return {
+        "status": "ok",
+        "message": "Face Recognition API is running",
+        "timestamp": datetime.now().isoformat()
+    }
+
+# ============================================================
+# FACE VERIFICATION ENDPOINT
+# ============================================================
 
 @app.post("/verify-face")
 async def verify_face(
@@ -87,128 +96,84 @@ async def verify_face(
     url: str = Form(...)
 ):
     """
-    Compare the uploaded 'file' image against the 'url' reference image.
-    'url' is treated as the reference face (known person).
+    Compare uploaded face with reference image URL
     """
-    tmp_path = None
     start_time = datetime.now()
+    tmp_path = None
 
     try:
-        # Save the uploaded file temporarily
+        # Save uploaded file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
             tmp.write(await file.read())
             tmp_path = tmp.name
 
-        # --- Load images ---
-        reference_image = load_image(url)
-        test_image = load_image(tmp_path)
+        # Load images
+        reference_img = load_image(url)
+        test_img = load_image(tmp_path)
 
-        # --- Encode faces ---
-        reference_encodings = face_recognition.face_encodings(reference_image)
-        if len(reference_encodings) == 0:
-            raise HTTPException(status_code=400, detail="No face found in the reference image.")
-        reference_encoding = reference_encodings[0]
+        # Extract embeddings
+        emb_ref = get_single_face_embedding(reference_img)
+        emb_test = get_single_face_embedding(test_img)
 
-        test_encodings = face_recognition.face_encodings(test_image)
-        if len(test_encodings) == 0:
-            raise HTTPException(status_code=400, detail="No face found in the test image.")
-        test_encoding = test_encodings[0]
+        # Compare
+        similarity = cosine_similarity(emb_ref, emb_test)
+        threshold = 0.45
+        verified = similarity >= threshold
 
-        # --- Compare faces ---
-        results = face_recognition.compare_faces([reference_encoding], test_encoding)
-        distance = face_recognition.face_distance([reference_encoding], test_encoding)[0]
+        duration = (datetime.now() - start_time).total_seconds()
 
-        verified = bool(results[0])
-        end_time = datetime.now()
-        duration = (end_time - start_time).total_seconds()
-
-        # --- Response ---
         return JSONResponse({
             "verified": verified,
-            "distance": round(float(distance), 3),
-            "reference_url": url,
+            "similarity": round(similarity, 3),
+            "threshold": threshold,
             "filename": file.filename,
+            "reference_url": url,
             "duration_seconds": duration,
-            "timestamp": end_time.isoformat()
+            "timestamp": datetime.now().isoformat()
         })
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error verifying face: {str(e)}")
-
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-# @app.post("/detect-face")
-# async def detect_face(file: UploadFile = File(...)):
-#     """
-#     Validate a single, clear face is present in the uploaded image.
-#     Returns number of faces and a boolean ok flag (true when exactly one face detected).
-#     """
-#     tmp_path: Optional[str] = None
-#     try:
-#         if not file:
-#             raise HTTPException(status_code=400, detail="Image file is required")
 
-#         tmp_path = save_upload_to_tempfile(file)
-#         faces = DeepFace.extract_faces(img_path = tmp_path, enforce_detection = True)
-#         num_faces = len(faces)
-
-#         return JSONResponse({
-#             "ok": num_faces == 1,
-#             "num_faces": num_faces,
-#         })
-#     except ValueError as e:
-#         # No face or detection error
-#         raise HTTPException(status_code=400, detail=f"Face detection failed: {e}")
-#     finally:
-#         if tmp_path and os.path.exists(tmp_path):
-#             try:
-#                 os.remove(tmp_path)
-#             except Exception:
-#                 pass
+# ============================================================
+# FACE DETECTION ENDPOINT
+# ============================================================
 
 @app.post("/detect-face")
 async def detect_face(file: UploadFile = File(...)):
     """
-    Detect faces in an uploaded image.
-    Returns:
-      - ok: True if exactly one face is detected
-      - num_faces: Number of faces found
+    Detect faces in uploaded image
     """
-    tmp_path = None
-    
     start_time = datetime.now()
-    try:
-        if not file:
-            raise HTTPException(status_code=400, detail="Image file is required")
+    tmp_path = None
 
-        # Save uploaded image temporarily
+    try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
             tmp.write(await file.read())
             tmp_path = tmp.name
 
-        # Load the image
-        image = face_recognition.load_image_file(tmp_path)
+        img = load_image(tmp_path)
+        faces = face_app.get(img)
 
-        # Detect face locations
-        face_locations = face_recognition.face_locations(image)
-        num_faces = len(face_locations)
-        end_time = datetime.now()
-        duration = (end_time - start_time).total_seconds()
-        # Return result
+        duration = (datetime.now() - start_time).total_seconds()
+
         return JSONResponse({
-            "ok": num_faces == 1,
-            "num_faces": num_faces,
-            "duration":duration
+            "ok": len(faces) == 1,
+            "num_faces": len(faces),
+            "duration_seconds": duration
         })
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Face detection failed: {str(e)}")
-
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
+            os.remove(tmp_path)
+
