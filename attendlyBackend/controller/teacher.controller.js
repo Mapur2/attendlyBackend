@@ -2,6 +2,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 const redisClient = require('../db/redisClient');
+const { Attendance, User } = require('../db/connectDb');
 const QRCode = require('qrcode');
 const crypto = require('crypto');
 
@@ -63,4 +64,54 @@ const getSessionQR = asyncHandler(async (req, res) => {
     res.type('png').send(png);
   });
 
-module.exports = { startClass, getSessionQR };
+module.exports = { startClass, getSessionQR }; 
+
+// Live attendance for a session/subject
+const getLiveAttendance = asyncHandler(async (req, res) => {
+    const user = req.user;
+
+    const { sessionId, subjectId, since } = req.query || {};
+    if (!sessionId) throw new ApiError(400, 'sessionId is required');
+
+    const where = { sessionId, institutionId: user.institutionId };
+    if (subjectId) where.subjectId = subjectId;
+    if (since) where.createdAt = { $gte: new Date(since) };
+
+    const rows = await Attendance.findAll({
+        where,
+        order: [['createdAt', 'DESC']],
+    });
+
+    // Deduplicate by userId keeping most recent
+    const seen = new Set();
+    const unique = [];
+    for (const row of rows) {
+        if (!seen.has(row.userId)) {
+            seen.add(row.userId);
+            unique.push(row);
+        }
+    }
+
+    // Fetch user info for the unique list
+    const userIds = unique.map(r => r.userId);
+    const users = userIds.length
+        ? await User.findAll({ where: { id: userIds }, attributes: ['id', 'name', 'email', 'role'] })
+        : [];
+    const idToUser = new Map(users.map(u => [u.id, u]));
+
+    const attendees = unique.map(r => ({
+        id: r.id,
+        userId: r.userId,
+        user: idToUser.get(r.userId) || null,
+        subjectId: r.subjectId,
+        sessionId: r.sessionId,
+        latitude: r.latitude,
+        longitude: r.longitude,
+        ip: r.ip,
+        createdAt: r.createdAt,
+    }));
+
+    return res.json(new ApiResponse(200, { attendees, count: attendees.length }, 'Live attendance'));
+});
+
+module.exports.getLiveAttendance = getLiveAttendance;
