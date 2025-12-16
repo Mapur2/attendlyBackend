@@ -123,15 +123,33 @@ const verifyPayment = asyncHandler(async (req, res) => {
             { status: "active" },
             { where: { licenseKey } }
         );
-        return res.redirect(`${process.env.FRONTEND_URL}/payment/success`)
+        return res.status(200).json(
+            new ApiResponse(200, {
+                status: "success",
+                licenseKey,
+                redirectTo: "/payment/success"
+            }, "Payment verified successfully")
+        );
     } else if (status === "FAILED") {
         await License.update(
             { status: "revoked" },
             { where: { licenseKey } }
         );
-        return res.redirect(`${process.env.FRONTEND_URL}/payment/failure`)
+        return res.status(200).json(
+            new ApiResponse(200, {
+                status: "failed",
+                licenseKey,
+                redirectTo: "/payment/failure"
+            }, "Payment failed")
+        );
     } else {
-        return res.redirect(`${process.env.FRONTEND_URL}/payment/pending`)
+        return res.status(200).json(
+            new ApiResponse(200, {
+                status: "pending",
+                licenseKey,
+                redirectTo: "/payment/pending"
+            }, "Payment is pending")
+        );
     }
 });
 
