@@ -67,7 +67,7 @@ const createOrder = asyncHandler(async (req, res) => {
     });
 
     const amount = 10000;
-    const redirectUrl = `${process.env.BACKEND_URL}/license/verify-payment?merchantOrderId=${merchantOrderId}&licenseKey=${licenseKey}`;
+    const redirectUrl = `${process.env.FRONTEND_URL}/license/verify-payment?merchantOrderId=${merchantOrderId}&licenseKey=${licenseKey}`;
 
     const request = StandardCheckoutPayRequest.builder()
         .merchantOrderId(merchantOrderId)
