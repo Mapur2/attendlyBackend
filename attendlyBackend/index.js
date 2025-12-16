@@ -12,7 +12,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(cors({
-    origin: "*",
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
     credentials: true // allow frontend to access cookies
 }));
 app.use(cookieParser());
@@ -49,7 +49,7 @@ app.get("/", (req, res) => {
 })
 
 connectDb().then(() => {
-    app.listen(port,"0.0.0.0" ,() => {
+    app.listen(port, "0.0.0.0", () => {
         console.log(`Server running at http://0.0.0.0:${port}`);
     });
 })
