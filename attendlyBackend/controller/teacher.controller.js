@@ -64,7 +64,7 @@ const getSessionQR = asyncHandler(async (req, res) => {
     res.type('png').send(png);
 });
 
-module.exports = { startClass, getSessionQR, streamLiveAttendance };
+module.exports = { startClass, getSessionQR };
 
 // Live attendance for a session/subject
 const getLiveAttendance = asyncHandler(async (req, res) => {
