@@ -148,15 +148,15 @@ const options = {
                 },
                 AddYear: {
                     type: "object",
-                    required: ["year", "departmentId"],
+                    required: ["name", "departmentId"],
                     properties: {
-                        year: {
+                        name: {
                             type: "string",
                             example: "First Year"
                         },
                         departmentId: {
-                            type: "integer",
-                            example: 1
+                            type: "string",
+                            example: "100000"
                         }
                     }
                 },
@@ -173,8 +173,8 @@ const options = {
                             example: "CS201"
                         },
                         yearId: {
-                            type: "integer",
-                            example: 1
+                            type: "string",
+                            example: "100000"
                         }
                     }
                 },
@@ -184,11 +184,11 @@ const options = {
                     required: ["subjectId", "duration"],
                     properties: {
                         subjectId: {
-                            type: "integer",
-                            example: 1
+                            type: "string",
+                            example: "100000"
                         },
                         duration: {
-                            type: "integer",
+                            type: "string",
                             description: "Duration in minutes",
                             example: 60
                         }
@@ -200,8 +200,8 @@ const options = {
                     required: ["sessionId", "latitude", "longitude"],
                     properties: {
                         sessionId: {
-                            type: "integer",
-                            example: 1
+                            type: "string",
+                            example: "100000"
                         },
                         latitude: {
                             type: "number",
