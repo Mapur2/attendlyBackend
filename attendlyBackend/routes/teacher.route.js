@@ -35,20 +35,20 @@ const licenseAuth = require('../middleware/licenseLayer');
  *                   type: object
  *                   properties:
  *                     sessionId:
- *                       type: integer
- *                       example: 1
+ *                       type: string
+ *                       example: "100000"
  *                     subjectId:
- *                       type: integer
- *                       example: 1
+ *                       type: string
+ *                       example: "100000"
  *                     startTime:
  *                       type: string
  *                       format: date-time
- *                       example: 2024-12-15T10:00:00Z
+ *                       example: "2024-12-15T10:00:00Z"
  *                     endTime:
  *                       type: string
  *                       format: date-time
- *                       example: 2024-12-15T11:00:00Z
- *                     qrCode:
+ *                       example: "2024-12-15T11:00:00Z"
+ *                     qrDataUrl:
  *                       type: string
  *                       description: Base64 encoded QR code image
  *                 message:
@@ -87,9 +87,9 @@ router.post('/start-class', authMiddleware, startClass);
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
  *         description: Session ID
- *         example: 1
+ *         example: "100000"
  *     responses:
  *       200:
  *         description: QR code retrieved successfully
@@ -104,12 +104,12 @@ router.post('/start-class', authMiddleware, startClass);
  *                 data:
  *                   type: object
  *                   properties:
- *                     qrCode:
+ *                     qrDataUrl:
  *                       type: string
  *                       description: Base64 encoded QR code image
  *                     sessionId:
- *                       type: integer
- *                       example: 1
+ *                       type: string
+ *                       example: "100000"
  *                 success:
  *                   type: boolean
  *                   example: true
@@ -171,8 +171,8 @@ router.get('/session/:id/qr', authMiddleware, licenseAuth(["teacher"]), getSessi
  *                         type: object
  *                         properties:
  *                           sessionId:
- *                             type: integer
- *                             example: 1
+ *                             type: string
+ *                             example: "100000"
  *                           subjectName:
  *                             type: string
  *                             example: Data Structures
