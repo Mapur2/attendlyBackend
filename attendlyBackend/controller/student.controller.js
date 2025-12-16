@@ -31,7 +31,7 @@ const studentVerifyFace = asyncHandler(async (req, res) => {
     const allowedIps = ipRow?.ips || [];
 
     // Allow localhost for development only if explicitly enabled
-    const devAllowed = process.env.ALLOW_LOCALHOST_IP === "true" && (clientIp === "127.0.0.1" || clientIp === "::1");
+    const devAllowed = process.env.ALLOW_LOCALHOST_IP === "true";
 
     if (!devAllowed && !allowedIps.includes(clientIp)) {
         throw new ApiError(403, "Please connect to your campus WiFi to verify attendance");
