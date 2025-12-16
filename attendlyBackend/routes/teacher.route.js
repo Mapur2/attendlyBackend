@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/authLayer');
-const { startClass, getSessionQR, getLiveAttendance } = require('../controller/teacher.controller');
+const { startClass, getSessionQR, getLiveAttendance, streamLiveAttendance } = require('../controller/teacher.controller');
 const licenseAuth = require('../middleware/licenseLayer');
 
 /**
@@ -221,5 +221,64 @@ router.get('/session/:id/qr', authMiddleware, licenseAuth(["teacher"]), getSessi
  *               $ref: '#/components/schemas/ApiError'
  */
 router.get('/live-attendance', authMiddleware, licenseAuth(["teacher", "admin"]), getLiveAttendance);
+
+/**
+ * @swagger
+ * /teacher/live-attendance/stream:
+ *   get:
+ *     summary: Stream live attendance updates via SSE
+ *     description: Establishes a Server-Sent Events connection for real-time attendance updates
+ *     tags: [Teacher]
+ *     security:
+ *       - bearerAuth: []
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Session ID to stream attendance for
+ *         example: "550e8400-e29b-41d4-a716-446655440000"
+ *     responses:
+ *       200:
+ *         description: SSE stream established
+ *         content:
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *               description: Server-Sent Events stream
+ *               example: |
+ *                 event: connected
+ *                 data: {"sessionId":"123","count":5,"timestamp":"2024-12-16T15:25:58Z"}
+ *                 
+ *                 event: new_attendance
+ *                 data: {"userId":"456","user":{"name":"John Doe"},"timestamp":"2024-12-16T15:26:10Z"}
+ *       400:
+ *         description: Bad request - sessionId required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiError'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiError'
+ *       403:
+ *         description: Forbidden - Not authorized for this session
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiError'
+ *       404:
+ *         description: Session not found or expired
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiError'
+ */
+router.get('/live-attendance/stream', authMiddleware, licenseAuth(["teacher", "admin"]), streamLiveAttendance);
 
 module.exports = router;

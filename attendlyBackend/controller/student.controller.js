@@ -61,7 +61,7 @@ const studentVerifyFace = asyncHandler(async (req, res) => {
         return res.status(200).json(new ApiResponse(200, data, data.verified ? "Face verified" : "Face not matched"));
     } finally {
         if (filePath) {
-            try { await fs.unlink(filePath); } catch (_) {}
+            try { await fs.unlink(filePath); } catch (_) { }
         }
     }
 })
@@ -90,7 +90,7 @@ const joinClassSession = asyncHandler(async (req, res) => {
     const clientIp = rawIp.replace("::ffff:", "");
     const ipRow = await Ip.findOne({ where: { institutionId: req.user.institutionId } });
     const allowedIps = ipRow?.ips || [];
-    const devAllowed = process.env.ALLOW_LOCALHOST_IP === "true" && (clientIp === "127.0.0.1" || clientIp === "::1");
+    const devAllowed = process.env.ALLOW_LOCALHOST_IP === "true";
     if (!devAllowed && !allowedIps.includes(clientIp)) {
         throw new ApiError(403, "Connect to campus WiFi to join the class");
     }
@@ -106,7 +106,7 @@ const joinClassSession = asyncHandler(async (req, res) => {
     if (!isInsideAny) throw new ApiError(403, "You are outside the campus perimeter");
 
     // Persist attendance record
-    await Attendance.create({
+    const attendanceRecord = await Attendance.create({
         sessionId,
         userId: req.user.id,
         institutionId: req.user.institutionId,
@@ -116,6 +116,30 @@ const joinClassSession = asyncHandler(async (req, res) => {
         longitude,
         metadata: { source: "qr", method: "wifi+geofence" }
     });
+
+    // Fetch user details for real-time notification
+    const student = await User.findByPk(req.user.id, {
+        attributes: ['id', 'name', 'email', 'role']
+    });
+
+    // Publish to Redis for SSE subscribers (real-time updates)
+    const eventData = {
+        id: attendanceRecord.id,
+        userId: req.user.id,
+        user: student,
+        sessionId,
+        subjectId,
+        latitude,
+        longitude,
+        ip: clientIp,
+        createdAt: attendanceRecord.createdAt,
+        timestamp: new Date().toISOString()
+    };
+
+    await redis.publish(
+        `attendance:${sessionId}`,
+        JSON.stringify(eventData)
+    );
 
     return res.status(200).json(new ApiResponse(200, { sessionId, subjectId }, "Joined class and marked present"));
 });
