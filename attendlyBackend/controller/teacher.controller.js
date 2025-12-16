@@ -173,6 +173,7 @@ const streamLiveAttendance = asyncHandler(async (req, res) => {
         createdAt: r.createdAt,
     }));
 
+
     res.write(`event: connected\n`);
     res.write(`data: ${JSON.stringify({ sessionId, count: attendees.length, attendees, timestamp: new Date() })}\n\n`);
 
@@ -180,15 +181,23 @@ const streamLiveAttendance = asyncHandler(async (req, res) => {
     const subscriber = redisClient.duplicate();
     const channel = `attendance:${sessionId}`;
 
-    subscriber.subscribe(channel, (message) => {
-        try {
-            const data = JSON.parse(message);
-            res.write(`event: new_attendance\n`);
-            res.write(`data: ${JSON.stringify(data)}\n\n`);
-        } catch (err) {
-            console.error('SSE message error:', err);
+    // Listen for messages on the channel
+    subscriber.on('message', (ch, message) => {
+        if (ch === channel) {
+            try {
+                const data = JSON.parse(message);
+                console.log('📨 SSE: Sending new_attendance event:', data.user?.name);
+                res.write(`event: new_attendance\n`);
+                res.write(`data: ${JSON.stringify(data)}\n\n`);
+            } catch (err) {
+                console.error('SSE message error:', err);
+            }
         }
     });
+
+    // Subscribe to the channel
+    await subscriber.subscribe(channel);
+    console.log(`✅ SSE: Subscribed to channel: ${channel}`);
 
     // Send heartbeat every 30 seconds to keep connection alive
     const heartbeat = setInterval(() => {
@@ -208,11 +217,12 @@ const streamLiveAttendance = asyncHandler(async (req, res) => {
     }
 
     // Cleanup on client disconnect
-    req.on('close', () => {
+    req.on('close', async () => {
+        console.log(`🔌 SSE: Client disconnected from session: ${sessionId}`);
         clearInterval(heartbeat);
         if (expiryWarning) clearTimeout(expiryWarning);
-        subscriber.unsubscribe(channel);
-        subscriber.quit();
+        await subscriber.unsubscribe(channel);
+        subscriber.disconnect();
         res.end();
     });
 });

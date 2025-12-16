@@ -136,10 +136,9 @@ const joinClassSession = asyncHandler(async (req, res) => {
         timestamp: new Date().toISOString()
     };
 
-    await redis.publish(
-        `attendance:${sessionId}`,
-        JSON.stringify(eventData)
-    );
+    const channel = `attendance:${sessionId}`;
+    const publishResult = await redis.publish(channel, JSON.stringify(eventData));
+    console.log(`📢 Published to ${channel}, subscribers: ${publishResult}, student: ${student?.name}`);
 
     return res.status(200).json(new ApiResponse(200, { sessionId, subjectId }, "Joined class and marked present"));
 });
