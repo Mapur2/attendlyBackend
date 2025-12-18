@@ -97,23 +97,13 @@ const joinClassSession = asyncHandler(async (req, res) => {
 
     // Geofence check against any campus polygon of user's institution
     const campuses = await Campus.findAll({ where: { institutionId: req.user.institutionId } });
-    // const isInsideAny = campuses.some(c => {
-    //     const ring = Array.isArray(c.coordinates) ? c.coordinates : [];
-    //     // Stored as [lng, lat, alt]; we use [lng, lat]
-    //     const polygon = ring.map(pt => [pt[0], pt[1]]);
-    //     return polygon.length >= 3 && isPointInPolygon(longitude, latitude, polygon);
-    // });
     const isInsideAny = campuses.some(c => {
         const ring = Array.isArray(c.coordinates) ? c.coordinates : [];
+        // Stored as [lng, lat, alt]; we use [lng, lat]
         const polygon = ring.map(pt => [pt[0], pt[1]]);
-
-        if (polygon.length < 3) return false;
-
-        return (
-            isPointInPolygon(longitude, latitude, polygon) ||
-            isPointNearPolygon(longitude, latitude, polygon, GPS_TOLERANCE_METERS)
-        );
+        return polygon.length >= 3 && isPointInPolygon(longitude, latitude, polygon);
     });
+
     if (!isInsideAny) throw new ApiError(403, "You are outside the campus perimeter");
 
     // Persist attendance record
