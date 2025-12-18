@@ -14,11 +14,11 @@ const options = {
         },
         servers: [
             {
-                url: "http://localhost:3001",
+                url: "https://90nhxh89-3001.inc1.devtunnels.ms",
                 description: "Development server"
             },
             {
-                url: "https://api.attendly.com",
+                url: "https://90nhxh89-3001.inc1.devtunnels.ms",
                 description: "Production server"
             }
         ],
@@ -162,7 +162,7 @@ const options = {
                 },
                 AddSubject: {
                     type: "object",
-                    required: ["name", "code", "yearId"],
+                    required: ["name", "code", "yearId","departmentId"],
                     properties: {
                         name: {
                             type: "string",
@@ -175,6 +175,10 @@ const options = {
                         yearId: {
                             type: "string",
                             example: "100000"
+                        },
+                        departmentId:{
+                            type:"string",
+                            example:"afjowi-asas-asax6782"
                         }
                     }
                 },
