@@ -11,9 +11,22 @@ const swaggerSpec = require('./swagger');
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+const allowedOrigins = [
+    "https://attendly-beryl.vercel.app",
+    "http://localhost:5173"
+];
 app.use(cors({
-    origin: "*",
-    credentials: true // allow frontend to access cookies
+    origin: function (origin, callback) {
+        // allow REST tools like Postman (no origin)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error("Not allowed by CORS"));
+        }
+    },
+    credentials: true
 }));
 app.use(cookieParser());
 
