@@ -1,14 +1,17 @@
-FROM node:20-alpine AS build
+# Use the official Node.js image.
+FROM node:21
+
+# Create and change to the app directory.
 WORKDIR /app
+
+# Copy required files for postinstall script
 COPY package*.json ./
-RUN npm ci --omit=dev
+
+# Install dependencies
+RUN npm install
+
+# Copy remaining local code to the container image
 COPY . .
 
-FROM node:20-alpine
-WORKDIR /app
-ENV NODE_ENV=production
-ENV PORT=3001
-
-COPY --from=build /app /app
-EXPOSE 3001
-CMD ["node", "index.js"]
+# Run the web service on container startup.
+CMD [ "node", "index.js" ]
