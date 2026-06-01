@@ -50,6 +50,11 @@ Subject.belongsTo(Department, { foreignKey: "departmentId" });
 Institution.hasOne(Ip, { foreignKey: "institutionId", as: "ipData" });
 Ip.belongsTo(Institution, { foreignKey: "institutionId", as: "institution" });
 
+Attendance.belongsTo(User, { foreignKey: "userId" });
+User.hasMany(Attendance, { foreignKey: "userId" });
+
+Attendance.belongsTo(Subject, { foreignKey: "subjectId" });
+Subject.hasMany(Attendance, { foreignKey: "subjectId" });
 
 // Function to connect and sync
 const connectDb = async () => {
