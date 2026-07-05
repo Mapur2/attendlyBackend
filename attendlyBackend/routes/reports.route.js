@@ -104,6 +104,20 @@ router.get('/student/:id', authLayer, getStudentAttendance);
 
 /**
  * @swagger
+ * /reports/student:
+ *   get:
+ *     summary: Get attendance history for a specific student (must be logged in as student)
+ *     tags: [Reports]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved student history
+ */
+router.get('/student', authLayer, getStudentAttendance);
+
+/**
+ * @swagger
  * /reports/dept-year-daily:
  *   get:
  *     summary: Department → Year → Day-wise attendance report

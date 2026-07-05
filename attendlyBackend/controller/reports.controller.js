@@ -89,7 +89,7 @@ const getAttendanceStats = asyncHandler(async (req, res) => {
 });
 
 const getStudentAttendance = asyncHandler(async (req, res) => {
-    const { id } = req.params;
+    const id  = req.params?.id || req.user.id
     const institutionId = req.user.institutionId;
 
     const student = await User.findOne({ where: { id, institutionId } });
