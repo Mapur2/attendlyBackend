@@ -187,12 +187,6 @@ const getDeptYearDailyAttendance = asyncHandler(async (req, res) => {
     const { institutionId } = req.user;
     const { startDate, endDate, departmentId } = req.query;
 
-    // Default: last 30 days
-    const from = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const to   = endDate   ? new Date(endDate)   : new Date();
-    // Include the full end day
-    to.setHours(23, 59, 59, 999);
-
     // ── 1. Fetch departments ──────────────────────────────────
     const deptWhere = { institutionId };
     if (departmentId) deptWhere.id = departmentId;
@@ -234,14 +228,28 @@ const getDeptYearDailyAttendance = asyncHandler(async (req, res) => {
 
     const allStudentIds = students.map(s => s.id);
 
-    // ── 4. Fetch attendance records in the date range ─────────
+    // Build dynamic date range constraints
+    const attendanceWhere = {
+        institutionId,
+        userId: { [Op.in]: allStudentIds },
+    };
+
+    if (startDate || endDate) {
+        attendanceWhere.createdAt = {};
+        if (startDate) {
+            attendanceWhere.createdAt[Op.gte] = new Date(startDate);
+        }
+        if (endDate) {
+            const to = new Date(endDate);
+            to.setHours(23, 59, 59, 999);
+            attendanceWhere.createdAt[Op.lte] = to;
+        }
+    }
+
+    // ── 4. Fetch attendance records ─────────
     const attendanceRows = allStudentIds.length
         ? await Attendance.findAll({
-            where: {
-                institutionId,
-                userId: { [Op.in]: allStudentIds },
-                createdAt: { [Op.between]: [from, to] },
-            },
+            where: attendanceWhere,
             attributes: ['userId', 'createdAt'],
           })
         : [];
@@ -315,9 +323,277 @@ const getDeptYearDailyAttendance = asyncHandler(async (req, res) => {
     }, 'Department-year daily attendance report'));
 });
 
+/**
+ * GET /reports/subject-day-attendees
+ * ?subjectId=UUID  (required)
+ * ?date=YYYY-MM-DD (required)
+ *
+ * Returns every unique student who marked attendance for a subject on a given date.
+ * De-duplicates by userId (keeps the earliest check-in time).
+ */
+const getSubjectDayAttendees = asyncHandler(async (req, res) => {
+    const { subjectId, date } = req.query;
+    const { institutionId } = req.user;
+
+    if (!subjectId) throw new ApiError(400, 'subjectId is required.');
+    if (!date)      throw new ApiError(400, 'date is required (YYYY-MM-DD).');
+
+    // Validate date
+    const parsedDate = new Date(date);
+    if (isNaN(parsedDate.getTime())) throw new ApiError(400, `Invalid date "${date}". Use YYYY-MM-DD.`);
+
+    // Build start / end of the day in UTC
+    const from = new Date(date); from.setUTCHours(0, 0, 0, 0);
+    const to   = new Date(date); to.setUTCHours(23, 59, 59, 999);
+
+    // Verify subject exists
+    const subject = await Subject.findOne({ where: { id: subjectId } });
+    if (!subject) throw new ApiError(404, `Subject ${subjectId} not found.`);
+
+    // Fetch all attendance rows for this subject + date
+    const rows = await Attendance.findAll({
+        where: {
+            institutionId,
+            subjectId,
+            createdAt: { [Op.between]: [from, to] },
+        },
+        attributes: ['id', 'userId', 'sessionId', 'ip', 'latitude', 'longitude', 'createdAt'],
+        include: [{
+            model: User,
+            attributes: ['id', 'name', 'email', 'phone', 'collegeCode', 'yearId', 'departmentId', 'isOnboarded'],
+        }],
+        order: [['createdAt', 'ASC']],
+    });
+
+    // De-duplicate by userId — keep the earliest (first) check-in
+    const seen    = new Map();
+    const unique  = [];
+    for (const row of rows) {
+        if (!seen.has(row.userId)) {
+            seen.set(row.userId, true);
+            unique.push(row);
+        }
+    }
+
+    const attendees = unique.map((row, index) => ({
+        rank:       index + 1,
+        attendanceId: row.id,
+        sessionId:  row.sessionId,
+        checkedInAt: row.createdAt,
+        ip:         row.ip,
+        latitude:   row.latitude,
+        longitude:  row.longitude,
+        student: {
+            id:           row.User?.id,
+            name:         row.User?.name,
+            email:        row.User?.email,
+            phone:        row.User?.phone,
+            collegeCode:  row.User?.collegeCode,
+            isOnboarded:  row.User?.isOnboarded,
+            yearId:       row.User?.yearId,
+            departmentId: row.User?.departmentId,
+        },
+    }));
+
+    return res.json(new ApiResponse(200, {
+        subject: { id: subject.id, name: subject.name, code: subject.code },
+        date,
+        totalPresent: attendees.length,
+        attendees,
+    }, `Attendees for ${subject.name} on ${date}`));
+});
+
+/**
+ * GET /reports/dept-year-subject-daily
+ * ?startDate=YYYY-MM-DD  (optional, defaults to 30 days ago)
+ * ?endDate=YYYY-MM-DD    (optional, defaults to today)
+ * ?departmentId=uuid      (optional, filter to one department)
+ *
+ * Returns a tree:
+ * Department -> Year -> Subject -> Day-wise attendance
+ */
+const getDeptYearSubjectDailyAttendance = asyncHandler(async (req, res) => {
+    const { institutionId } = req.user;
+    const { startDate, endDate, departmentId } = req.query;
+
+    // 1. Fetch departments with years and subjects
+    const deptWhere = { institutionId };
+    if (departmentId) deptWhere.id = departmentId;
+
+    const departments = await Department.findAll({
+        where: deptWhere,
+        attributes: ['id', 'name', 'departmentCode'],
+        include: [{
+            model: Year,
+            as: 'years',
+            attributes: ['id', 'name'],
+            include: [{
+                model: Subject,
+                attributes: ['id', 'name', 'code']
+            }]
+        }],
+        order: [
+            ['name', 'ASC'],
+            [{ model: Year, as: 'years' }, 'name', 'ASC'],
+            [{ model: Year, as: 'years' }, Subject, 'name', 'ASC']
+        ],
+    });
+
+    if (!departments.length) {
+        return res.json(new ApiResponse(200, { report: [] }, 'No departments found'));
+    }
+
+    // 2. Get list of all yearIds and all subjectIds in scope
+    const allYearIds = [];
+    const allSubjectIds = [];
+    for (const dept of departments) {
+        for (const year of dept.years) {
+            allYearIds.push(year.id);
+            const subjectsList = year.Subjects || year.subjects || [];
+            for (const sub of subjectsList) {
+                allSubjectIds.push(sub.id);
+            }
+        }
+    }
+
+    // 3. Fetch all students in these years/departments (to calculate expected totals per year/department)
+    const students = await User.findAll({
+        where: { institutionId, role: 'student', yearId: { [Op.in]: allYearIds } },
+        attributes: ['id', 'name', 'email', 'phone', 'collegeCode', 'yearId', 'departmentId'],
+    });
+
+    // Map for O(1) student lookup
+    const studentMap = {};
+    for (const s of students) {
+        studentMap[s.id] = {
+            id: s.id,
+            name: s.name,
+            email: s.email,
+            phone: s.phone,
+            collegeCode: s.collegeCode,
+        };
+    }
+
+    // Group students by yearId
+    const studentsByYear = {};
+    for (const s of students) {
+        if (!studentsByYear[s.yearId]) studentsByYear[s.yearId] = new Set();
+        studentsByYear[s.yearId].add(s.id);
+    }
+
+    const allStudentIds = students.map(s => s.id);
+
+    // Build dynamic date range constraints
+    const attendanceWhere = {
+        institutionId,
+        userId: { [Op.in]: allStudentIds },
+        subjectId: { [Op.in]: allSubjectIds },
+    };
+
+    if (startDate || endDate) {
+        attendanceWhere.createdAt = {};
+        if (startDate) {
+            attendanceWhere.createdAt[Op.gte] = new Date(startDate);
+        }
+        if (endDate) {
+            const to = new Date(endDate);
+            to.setHours(23, 59, 59, 999);
+            attendanceWhere.createdAt[Op.lte] = to;
+        }
+    }
+
+    // 4. Fetch attendance records
+    const attendanceRows = allStudentIds.length && allSubjectIds.length
+        ? await Attendance.findAll({
+            where: attendanceWhere,
+            attributes: ['userId', 'subjectId', 'createdAt'],
+          })
+        : [];
+
+    // Map: subjectId -> date -> Map(userId -> StudentDetails)
+    const presenceMap = {};
+    for (const row of attendanceRows) {
+        const date = formatDate(row.createdAt);
+        if (!presenceMap[row.subjectId]) presenceMap[row.subjectId] = {};
+        if (!presenceMap[row.subjectId][date]) presenceMap[row.subjectId][date] = new Map();
+        
+        if (!presenceMap[row.subjectId][date].has(row.userId) && studentMap[row.userId]) {
+            presenceMap[row.subjectId][date].set(row.userId, studentMap[row.userId]);
+        }
+    }
+
+    // Get all unique dates in the data range
+    const allDates = [...new Set(attendanceRows.map(r => formatDate(r.createdAt)))].sort();
+
+    // 5. Construct the report tree
+    const report = departments.map(dept => ({
+        department: {
+            id:   dept.id,
+            name: dept.name,
+            code: dept.departmentCode,
+        },
+        years: dept.years.map(year => {
+            const yearStudents = studentsByYear[year.id] || new Set();
+            const totalStudents = yearStudents.size;
+            const subjectsList = year.Subjects || year.subjects || [];
+
+            const subjects = subjectsList.map(sub => {
+                const subDates = presenceMap[sub.id] || {};
+
+                const days = allDates.map(date => {
+                    const presentMap = subDates[date] || new Map();
+                    const present = presentMap.size;
+                    const absent = totalStudents - present;
+                    const studentsPresent = Array.from(presentMap.values());
+                    return {
+                        date,
+                        present,
+                        absent: Math.max(absent, 0),
+                        total: totalStudents,
+                        attendanceRate: totalStudents > 0 ? +((present / totalStudents) * 100).toFixed(1) : 0,
+                        studentsPresent,
+                    };
+                });
+
+                const avgRate = days.length
+                    ? +(days.reduce((sum, d) => sum + d.attendanceRate, 0) / days.length).toFixed(1)
+                    : 0;
+
+                return {
+                    subject: {
+                        id: sub.id,
+                        name: sub.name,
+                        code: sub.code
+                    },
+                    averageAttendanceRate: avgRate,
+                    days,
+                };
+            });
+
+            return {
+                year: { id: year.id, name: year.name },
+                totalStudents,
+                subjects,
+            };
+        }),
+    }));
+
+    return res.json(new ApiResponse(200, {
+        report,
+        meta: {
+            from: formatDate(from),
+            to:   formatDate(to),
+            totalDays: allDates.length,
+            dates: allDates,
+        },
+    }, 'Department-year-subject daily attendance report'));
+});
+
 module.exports = {
     getAttendanceCsv,
     getAttendanceStats,
     getStudentAttendance,
     getDeptYearDailyAttendance,
+    getSubjectDayAttendees,
+    getDeptYearSubjectDailyAttendance,
 };
