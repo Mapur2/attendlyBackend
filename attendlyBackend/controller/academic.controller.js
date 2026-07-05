@@ -113,6 +113,30 @@ const listStudents = asyncHandler(async (req, res) => {
 });
 
 /**
+ * GET /academic/teachers
+ * Lists all teachers in the caller's institution.
+ * Optionally filter by departmentId.
+ */
+const listTeachers = asyncHandler(async (req, res) => {
+  const { departmentId } = req.query;
+  const { institutionId } = req.user;
+
+  const where = { institutionId, role: "teacher" };
+  if (departmentId) where.departmentId = departmentId;
+
+  const teachers = await User.findAll({
+    where,
+    attributes: { exclude: ["password"] },
+    include: [
+      { model: Department, as: "department", attributes: ["id", "name", "departmentCode"] },
+    ],
+    order: [["name", "ASC"]],
+  });
+
+  return res.json(new ApiResponse(200, { teachers, count: teachers.length }, "Teachers fetched"));
+});
+
+/**
  * PATCH /academic/students/:userId/assign
  * Body: { yearId, departmentId }
  * Assigns (or re-assigns) a student to a year and department.
@@ -161,6 +185,7 @@ module.exports = {
   addSubject,
   listSubjects,
   listStudents,
+  listTeachers,
   assignStudentYear,
 };
 

@@ -1,5 +1,5 @@
 const express = require('express');
-const { createDepartment, listDepartments, addYear, listYears, addSubject, listSubjects, getCampuses, listStudents, assignStudentYear } = require('../controller/academic.controller');
+const { createDepartment, listDepartments, addYear, listYears, addSubject, listSubjects, getCampuses, listStudents, listTeachers, assignStudentYear } = require('../controller/academic.controller');
 const authMiddleware = require('../middleware/authLayer');
 const licenseAuth = require('../middleware/licenseLayer');
 
@@ -476,6 +476,67 @@ router.get('/students', authMiddleware, licenseAuth(["admin", "teacher"]), listS
  *         description: Student, year, or department not found
  */
 router.patch('/students/:userId/assign', authMiddleware, licenseAuth(["admin"]), assignStudentYear);
+
+/**
+ * @swagger
+ * /academic/teachers:
+ *   get:
+ *     summary: List all teachers in the institution
+ *     description: Returns all users with role=teacher scoped to the caller's institution. Optionally filter by departmentId.
+ *     tags: [Academic]
+ *     security:
+ *       - bearerAuth: []
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: departmentId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Filter teachers by department UUID
+ *     responses:
+ *       200:
+ *         description: List of teachers
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     count:
+ *                       type: integer
+ *                     teachers:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           email:
+ *                             type: string
+ *                           phone:
+ *                             type: string
+ *                           isOnboarded:
+ *                             type: boolean
+ *                           department:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: string
+ *                               name:
+ *                                 type: string
+ *                               departmentCode:
+ *                                 type: string
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/teachers', authMiddleware, licenseAuth(["admin", "teacher"]), listTeachers);
 
 module.exports = router;
 

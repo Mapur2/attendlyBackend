@@ -47,7 +47,7 @@ Department.belongsTo(Institution, { foreignKey: "institutionId" });
 Campus.hasMany(Department, { foreignKey: "campusId" });
 Department.belongsTo(Campus, { foreignKey: "campusId" });
 
-Department.hasMany(Year, { foreignKey: "departmentId" });
+Department.hasMany(Year, { foreignKey: "departmentId", as: "years" });
 Year.belongsTo(Department, { foreignKey: "departmentId" });
 
 Year.hasMany(Subject, { foreignKey: "yearId" });
