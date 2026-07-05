@@ -38,6 +38,22 @@ const createUserModel = (sequelize) => {
           key: "id",
         },
       },
+      yearId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: "Years",
+          key: "id",
+        },
+      },
+      departmentId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: "Departments",
+          key: "id",
+        },
+      },
       collegeCode: {
         type: DataTypes.STRING,
       },

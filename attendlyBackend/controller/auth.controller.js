@@ -143,6 +143,7 @@ const generateAccessToken = (user) => {
                 email: user.email,
                 name: user.name,
                 role: user.role,
+                institutionId: user.institutionId
             },
             process.env.SECRET_TOKEN,
             {

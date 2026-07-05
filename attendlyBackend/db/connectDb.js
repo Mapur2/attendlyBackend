@@ -9,6 +9,7 @@ const createSubjectModel = require('../models/Subject.js');
 const createCampusModel = require("../models/Campus.js")
 const createIpModel = require("../models/Ip.js")
 const createAttendanceModel = require("../models/Attendance.js")
+const createClassNoteModel = require("../models/ClassNote.js")
 
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: "postgres",
@@ -26,12 +27,20 @@ const Subject = createSubjectModel(sequelize)
 const Campus = createCampusModel(sequelize)
 const Ip = createIpModel(sequelize)
 const Attendance = createAttendanceModel(sequelize)
+const ClassNote = createClassNoteModel(sequelize)
 
 // Associations
 Institution.hasMany(License, { foreignKey: "institutionId" });
 License.belongsTo(Institution, { foreignKey: "institutionId" });
 Institution.hasMany(User, { foreignKey: "institutionId" });
 User.belongsTo(Institution, { foreignKey: "institutionId" });
+
+// Student → Year / Department
+User.belongsTo(Year, { foreignKey: "yearId", as: "year" });
+Year.hasMany(User, { foreignKey: "yearId", as: "students" });
+
+User.belongsTo(Department, { foreignKey: "departmentId", as: "department" });
+Department.hasMany(User, { foreignKey: "departmentId", as: "students" });
 Institution.hasMany(Department, { foreignKey: "institutionId" });
 Department.belongsTo(Institution, { foreignKey: "institutionId" });
 
@@ -56,6 +65,16 @@ User.hasMany(Attendance, { foreignKey: "userId" });
 Attendance.belongsTo(Subject, { foreignKey: "subjectId" });
 Subject.hasMany(Attendance, { foreignKey: "subjectId" });
 
+// ClassNote associations
+ClassNote.belongsTo(User, { foreignKey: "teacherId", as: "teacher" });
+User.hasMany(ClassNote, { foreignKey: "teacherId", as: "classNotes" });
+
+ClassNote.belongsTo(Subject, { foreignKey: "subjectId" });
+Subject.hasMany(ClassNote, { foreignKey: "subjectId" });
+
+ClassNote.belongsTo(Institution, { foreignKey: "institutionId" });
+Institution.hasMany(ClassNote, { foreignKey: "institutionId" });
+
 // Function to connect and sync
 const connectDb = async () => {
   try {
@@ -68,5 +87,4 @@ const connectDb = async () => {
   }
 };
 
-module.exports =  { sequelize, connectDb, Institution, User, Institution, License, Department,Year, Subject, Campus, Ip };
-module.exports.Attendance = Attendance;
+module.exports =  { sequelize, connectDb, Institution, User, Institution, License, Department, Year, Subject, Campus, Ip, Attendance, ClassNote };

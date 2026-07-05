@@ -1,7 +1,7 @@
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const asyncHandler = require("../utils/asyncHandler");
-const { Department, Year, Subject, Campus } = require("../db/connectDb.js");
+const { Department, Year, Subject, Campus, User } = require("../db/connectDb.js");
 
 const getCampuses = asyncHandler(async (req, res) => {
   const { institutionId } = req.query || {};
@@ -68,6 +68,90 @@ const listSubjects = asyncHandler(async (req, res) => {
   return res.json(new ApiResponse(200, { subjects }, "Subjects fetched"));
 });
 
+// Students
+
+/**
+ * GET /academic/students?yearId=&departmentId=&page=&limit=
+ * Lists all students belonging to a given year and/or department.
+ * Scoped to the caller's institution.
+ */
+const listStudents = asyncHandler(async (req, res) => {
+  const { yearId, departmentId, page = 1, limit = 50 } = req.query;
+  const { institutionId } = req.user;
+
+  if (!yearId && !departmentId) {
+    throw new ApiError(400, "Provide at least yearId or departmentId as a query param.");
+  }
+
+  const where = { institutionId, role: "student" };
+  if (yearId)       where.yearId       = yearId;
+  if (departmentId) where.departmentId = departmentId;
+
+  const offset = (parseInt(page) - 1) * parseInt(limit);
+
+  const { rows: students, count } = await User.findAndCountAll({
+    where,
+    attributes: { exclude: ["password"] },
+    include: [
+      { model: Year,       as: "year",       attributes: ["id", "name"] },
+      { model: Department, as: "department",  attributes: ["id", "name", "departmentCode"] },
+    ],
+    order: [["name", "ASC"]],
+    limit:  parseInt(limit),
+    offset,
+  });
+
+  return res.json(new ApiResponse(200, {
+    students,
+    pagination: {
+      total:      count,
+      page:       parseInt(page),
+      limit:      parseInt(limit),
+      totalPages: Math.ceil(count / parseInt(limit)),
+    },
+  }, "Students fetched"));
+});
+
+/**
+ * PATCH /academic/students/:userId/assign
+ * Body: { yearId, departmentId }
+ * Assigns (or re-assigns) a student to a year and department.
+ * Admin only.
+ */
+const assignStudentYear = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { yearId, departmentId } = req.body;
+  const { institutionId } = req.user;
+
+  if (!yearId || !departmentId) {
+    throw new ApiError(400, "Both yearId and departmentId are required.");
+  }
+
+  // Verify the student belongs to this institution
+  const student = await User.findOne({ where: { id: userId, institutionId, role: "student" } });
+  if (!student) throw new ApiError(404, "Student not found in your institution.");
+
+  // Verify yearId + departmentId actually exist
+  const [year, department] = await Promise.all([
+    Year.findByPk(yearId),
+    Department.findByPk(departmentId),
+  ]);
+  if (!year)       throw new ApiError(404, "Year not found.");
+  if (!department) throw new ApiError(404, "Department not found.");
+
+  await student.update({ yearId, departmentId });
+
+  return res.json(new ApiResponse(200, {
+    userId:       student.id,
+    name:         student.name,
+    email:        student.email,
+    yearId,
+    departmentId,
+    yearName:     year.name,
+    departmentName: department.name,
+  }, "Student assigned to year and department."));
+});
+
 module.exports = {
   getCampuses,
   createDepartment,
@@ -76,6 +160,8 @@ module.exports = {
   listYears,
   addSubject,
   listSubjects,
+  listStudents,
+  assignStudentYear,
 };
 
 
