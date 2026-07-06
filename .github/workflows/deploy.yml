@@ -1,0 +1,65 @@
+name: Deploy attendlyBackend to AWS EC2
+
+on:
+  push:
+    branches:
+      - main # Change to master if applicable
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets::DOCKER_USERNAME }}
+          password: ${{ secrets::DOCKER_PASSWORD }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./attendlyBackend
+          file: ./attendlyBackend/Dockerfile
+          push: true
+          tags: ${{ secrets::DOCKER_USERNAME }}/attendly-backend:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets::EC2_HOST }}
+          username: ${{ secrets::EC2_USERNAME }}
+          key: ${{ secrets::EC2_SSH_KEY }}
+          script: |
+            # Create app directory if it doesn't exist
+            mkdir -p ~/attendly
+            
+            # Write environment variables safely
+            echo "${{ secrets::ENV_FILE }}" > ~/attendly/.env
+
+            # Log into Docker Hub on EC2
+            echo "${{ secrets::DOCKER_PASSWORD }}" | docker login -u "${{ secrets::DOCKER_USERNAME }}" --password-stdin
+
+            # Stop and remove the existing container if running
+            docker stop attendly-backend-container || true
+            docker rm attendly-backend-container || true
+
+            # Pull the latest image
+            docker pull ${{ secrets::DOCKER_USERNAME }}/attendly-backend:latest
+
+            # Run the new container mapping the internal port (e.g., 5000)
+            docker run -d \
+              --name attendly-backend-container \
+              --restart always \
+              -p 3001:3001 \
+              --env-file ~/attendly/.env \
+              ${{ secrets::DOCKER_USERNAME }}/attendly-backend:latest
+
+            # Prune old images to save disk space on t3.micro
+            docker image prune -f

@@ -1,17 +1,23 @@
-# Use the official Node.js image.
-FROM node:21
+# Use the Alpine variant for a significantly smaller image footprint
+FROM node:21-alpine
 
-# Create and change to the app directory.
+# Set the environment to production
+ENV NODE_ENV=production
+
+# Create and change to the app directory
 WORKDIR /app
 
-# Copy required files for postinstall script
+# Copy package files first to leverage Docker layer caching
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+# Use 'npm ci' for a clean, predictable production install
+RUN npm ci --only=production
 
-# Copy remaining local code to the container image
+# Copy the remaining local code to the container image
 COPY . .
 
-# Run the web service on container startup.
+# Run the web service as a non-root user for better security
+USER node
+
+# Run the web service on container startup
 CMD [ "node", "index.js" ]
