@@ -1,6 +1,7 @@
 const { ClassNote, Subject, User } = require("../db/connectDb");
 const { forceFlushAndClose } = require("../websocket/noteHandler");
 const { summarizeTranscript, flattenTranscript } = require("../utils/groqService");
+const { sendSummaryToStudents } = require("../utils/summaryEmailService");
 const ApiError = require("../utils/ApiError");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -40,18 +41,18 @@ const endSession = asyncHandler(async (req, res) => {
     throw new ApiError(403, "You are not authorized to end this session.");
   }
 
-  if (note.status === "summarized") {
-    return res.status(200).json({
-      success: true,
-      message: "Session was already summarized.",
-      data: {
-        noteId: note.id,
-        sessionId: note.sessionId,
-        status: note.status,
-        summary: note.summary,
-      },
-    });
-  }
+  // if (note.status === "summarized") {
+  //   return res.status(200).json({
+  //     success: true,
+  //     message: "Session was already summarized.",
+  //     data: {
+  //       noteId: note.id,
+  //       sessionId: note.sessionId,
+  //       status: note.status,
+  //       summary: note.summary,
+  //     },
+  //   });
+  // }
 
   // Step 1: Flush the WS buffer and close the socket connection
   await forceFlushAndClose(ClassNote, sessionId);
@@ -91,8 +92,9 @@ const endSession = asyncHandler(async (req, res) => {
 
   // Step 3: Groq summarization
   let summary;
+  const subjectName = note.Subject?.name || note.metadata?.subjectName || "Unknown Subject";
+  
   try {
-    const subjectName = note.Subject?.name || note.metadata?.subjectName || "Unknown Subject";
     summary = await summarizeTranscript(transcriptText, subjectName, {
       ...(note.metadata || {}),
       startedAt: note.startedAt,
@@ -127,6 +129,11 @@ const endSession = asyncHandler(async (req, res) => {
       summaryGeneratedAt: new Date().toISOString(),
       llmModel: "llama-3.3-70b-versatile",
     },
+  });
+
+  // Step 5: Asynchronously generate PDF and email to attendees (fire and forget)
+  sendSummaryToStudents(sessionId, institutionId, summary, subjectName).catch(err => {
+    console.error("[NotesController] Background PDF/Email generation failed:", err);
   });
 
   return res.status(200).json({
