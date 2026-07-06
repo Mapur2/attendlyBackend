@@ -43,6 +43,7 @@ const studentRoutes = require('./routes/student.route.js')
 const teacherRoutes = require('./routes/teacher.route.js')
 const reportsRoutes = require('./routes/reports.route.js')
 const notesRoutes = require('./routes/notes.route.js')
+const emailRoutes = require('./routes/email.route.js')
 
 app.use('/auth', authRoutes);
 app.use('/license', licenseRoutes);
@@ -52,6 +53,7 @@ app.use("/student", studentRoutes)
 app.use('/teacher', teacherRoutes)
 app.use('/reports', reportsRoutes)
 app.use('/notes', notesRoutes)
+app.use('/email', emailRoutes)
 
 // Swagger Documentation
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
