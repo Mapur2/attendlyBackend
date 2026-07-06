@@ -3,7 +3,7 @@ name: Deploy attendlyBackend to AWS EC2
 on:
   push:
     branches:
-      - main # Change to master if applicable
+      - master # Change to master if applicable
 
 jobs:
   build-and-push:
