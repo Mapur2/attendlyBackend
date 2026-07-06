@@ -214,16 +214,24 @@ const getDeptYearDailyAttendance = asyncHandler(async (req, res) => {
 
     // ── 3. Fetch students grouped by yearId ───────────────────
     // Returns: [ { id, yearId, departmentId } ]
+    const deptIdSet = new Set(departments.map(d => d.id));
     const students = await User.findAll({
-        where: { institutionId, role: 'student', yearId: { [Op.in]: allYearIds } },
+        where: { 
+            institutionId, 
+            role: 'student', 
+            yearId: { [Op.in]: allYearIds },
+        },
         attributes: ['id', 'yearId', 'departmentId'],
     });
 
-    // yearId → Set of studentIds
-    const studentsByYear = {};
+    // departmentId → yearId → Set of studentIds
+    // Only include students whose departmentId is in scope
+    const studentsByDeptYear = {};
     for (const s of students) {
-        if (!studentsByYear[s.yearId]) studentsByYear[s.yearId] = new Set();
-        studentsByYear[s.yearId].add(s.id);
+        if (!deptIdSet.has(s.departmentId)) continue;
+        if (!studentsByDeptYear[s.departmentId]) studentsByDeptYear[s.departmentId] = {};
+        if (!studentsByDeptYear[s.departmentId][s.yearId]) studentsByDeptYear[s.departmentId][s.yearId] = new Set();
+        studentsByDeptYear[s.departmentId][s.yearId].add(s.id);
     }
 
     const allStudentIds = students.map(s => s.id);
@@ -255,25 +263,53 @@ const getDeptYearDailyAttendance = asyncHandler(async (req, res) => {
         : [];
 
     // ── 5. Build a map: yearId → date → Set(userId) ───────────
-    // First, build userId → yearId lookup
-    const userYearMap = {};
-    for (const s of students) userYearMap[s.id] = s.yearId;
+    // First, build userId → {deptId, yearId} lookup
+    const userDeptYearMap = {};
+    for (const s of students) {
+        userDeptYearMap[s.id] = { deptId: s.departmentId, yearId: s.yearId };
+    }
 
-    // yearId → date → Set<userId>
+    // deptId → yearId → date → Set<userId>
     const presenceMap = {};
     for (const row of attendanceRows) {
-        const yearId = userYearMap[row.userId];
-        if (!yearId) continue;
+        const studentInfo = userDeptYearMap[row.userId];
+        if (!studentInfo) continue;
+        const { deptId, yearId } = studentInfo;
         const date = formatDate(row.createdAt);
-        if (!presenceMap[yearId]) presenceMap[yearId] = {};
-        if (!presenceMap[yearId][date]) presenceMap[yearId][date] = new Set();
-        presenceMap[yearId][date].add(row.userId);
+
+        if (!presenceMap[deptId]) presenceMap[deptId] = {};
+        if (!presenceMap[deptId][yearId]) presenceMap[deptId][yearId] = {};
+        if (!presenceMap[deptId][yearId][date]) presenceMap[deptId][yearId][date] = new Set();
+        presenceMap[deptId][yearId][date].add(row.userId);
     }
 
     // ── 6. Collect all distinct dates in range from data ──────
-    const allDates = [...new Set(attendanceRows.map(r => formatDate(r.createdAt)))].sort();
+    let allDates = [...new Set(attendanceRows.map(r => formatDate(r.createdAt)))].sort();
+
+    const queryStart = startDate ? new Date(startDate) : null;
+    const queryEnd = endDate ? new Date(endDate) : null;
+
+    if (queryStart || queryEnd) {
+        const start = queryStart || (allDates.length ? new Date(allDates[0]) : null);
+        const end = queryEnd || (allDates.length ? new Date(allDates[allDates.length - 1]) : null);
+        
+        if (start && end) {
+            const generatedDates = [];
+            const current = new Date(start);
+            while (current <= end) {
+                generatedDates.push(current.toISOString().split('T')[0]);
+                current.setUTCDate(current.getUTCDate() + 1);
+            }
+            allDates = [...new Set([...allDates, ...generatedDates])].sort();
+        }
+    }
 
     // ── 7. Build the response tree ────────────────────────────
+
+    // If no date range provided, send all data (from/to will reflect data bounds)
+    const from = startDate ? new Date(startDate) : (allDates.length ? new Date(allDates[0]) : null);
+    const to   = endDate   ? new Date(endDate)   : (allDates.length ? new Date(allDates[allDates.length - 1]) : null);
+
     const report = departments.map(dept => ({
         department: {
             id:   dept.id,
@@ -281,26 +317,33 @@ const getDeptYearDailyAttendance = asyncHandler(async (req, res) => {
             code: dept.departmentCode,
         },
         years: dept.years.map(year => {
-            const yearStudents = studentsByYear[year.id] || new Set();
+            const deptStudents = studentsByDeptYear[dept.id] || {};
+            const yearStudents = deptStudents[year.id] || new Set();
             const total = yearStudents.size;
-            const yearDates = presenceMap[year.id] || {};
+            
+            const deptPresence = presenceMap[dept.id] || {};
+            const yearDates = deptPresence[year.id] || {};
 
             const days = allDates.map(date => {
+                const hasSession = yearDates.hasOwnProperty(date);
                 const presentSet = yearDates[date] || new Set();
                 const present = presentSet.size;
-                const absent  = total - present;
+                const absent  = hasSession ? total - present : 0;
+                const dayTotal = hasSession ? total : 0;
                 return {
                     date,
                     present,
                     absent:  Math.max(absent, 0),
-                    total,
-                    attendanceRate: total > 0 ? +((present / total) * 100).toFixed(1) : 0,
+                    total: dayTotal,
+                    attendanceRate: dayTotal > 0 ? +((present / dayTotal) * 100).toFixed(1) : 0,
+                    isSession: hasSession,
                 };
             });
 
             // Overall summary for this year
-            const avgRate = days.length
-                ? +(days.reduce((sum, d) => sum + d.attendanceRate, 0) / days.length).toFixed(1)
+            const sessionDays = days.filter(d => d.isSession);
+            const avgRate = sessionDays.length
+                ? +(sessionDays.reduce((sum, d) => sum + d.attendanceRate, 0) / sessionDays.length).toFixed(1)
                 : 0;
 
             return {
@@ -315,8 +358,8 @@ const getDeptYearDailyAttendance = asyncHandler(async (req, res) => {
     return res.json(new ApiResponse(200, {
         report,
         meta: {
-            from: formatDate(from),
-            to:   formatDate(to),
+            from: from ? formatDate(from) : null,
+            to:   to   ? formatDate(to)   : null,
             totalDays: allDates.length,
             dates: allDates,
         },
@@ -456,37 +499,10 @@ const getDeptYearSubjectDailyAttendance = asyncHandler(async (req, res) => {
         }
     }
 
-    // 3. Fetch all students in these years/departments (to calculate expected totals per year/department)
-    const students = await User.findAll({
-        where: { institutionId, role: 'student', yearId: { [Op.in]: allYearIds } },
-        attributes: ['id', 'name', 'email', 'phone', 'collegeCode', 'yearId', 'departmentId'],
-    });
-
-    // Map for O(1) student lookup
-    const studentMap = {};
-    for (const s of students) {
-        studentMap[s.id] = {
-            id: s.id,
-            name: s.name,
-            email: s.email,
-            phone: s.phone,
-            collegeCode: s.collegeCode,
-        };
-    }
-
-    // Group students by yearId
-    const studentsByYear = {};
-    for (const s of students) {
-        if (!studentsByYear[s.yearId]) studentsByYear[s.yearId] = new Set();
-        studentsByYear[s.yearId].add(s.id);
-    }
-
-    const allStudentIds = students.map(s => s.id);
-
-    // Build dynamic date range constraints
+    // 3. Fetch attendance records directly (subjects already scoped to this institution's depts)
+    //    We do NOT filter by studentIds since students may have null departmentId/yearId
     const attendanceWhere = {
         institutionId,
-        userId: { [Op.in]: allStudentIds },
         subjectId: { [Op.in]: allSubjectIds },
     };
 
@@ -502,28 +518,137 @@ const getDeptYearSubjectDailyAttendance = asyncHandler(async (req, res) => {
         }
     }
 
-    // 4. Fetch attendance records
-    const attendanceRows = allStudentIds.length && allSubjectIds.length
+    const attendanceRows = allSubjectIds.length
         ? await Attendance.findAll({
             where: attendanceWhere,
             attributes: ['userId', 'subjectId', 'createdAt'],
           })
         : [];
 
-    // Map: subjectId -> date -> Map(userId -> StudentDetails)
-    const presenceMap = {};
-    for (const row of attendanceRows) {
-        const date = formatDate(row.createdAt);
-        if (!presenceMap[row.subjectId]) presenceMap[row.subjectId] = {};
-        if (!presenceMap[row.subjectId][date]) presenceMap[row.subjectId][date] = new Map();
-        
-        if (!presenceMap[row.subjectId][date].has(row.userId) && studentMap[row.userId]) {
-            presenceMap[row.subjectId][date].set(row.userId, studentMap[row.userId]);
+    // Collect unique userIds from attendance records
+    const attendeeUserIds = [...new Set(attendanceRows.map(r => r.userId))];
+
+    // Fetch user details for attendees — only students (exclude teachers/admins who may have joined)
+    const attendeeUsers = attendeeUserIds.length
+        ? await User.findAll({
+            where: { id: { [Op.in]: attendeeUserIds }, institutionId, role: 'student' },
+            attributes: ['id', 'name', 'email', 'phone', 'collegeCode', 'yearId', 'departmentId'],
+          })
+        : [];
+
+    // Build: subjectId -> { deptId, yearId } from the dept/year tree
+    const subjectToDeptYear = {};
+    for (const dept of departments) {
+        for (const year of dept.years) {
+            const subjectsList = year.Subjects || year.subjects || [];
+            for (const sub of subjectsList) {
+                subjectToDeptYear[sub.id] = { deptId: dept.id, yearId: year.id };
+            }
         }
     }
 
+    // Build studentMap from attendee users — clean response shape (no internal fields)
+    const studentMap = {};
+    for (const u of attendeeUsers) {
+        studentMap[u.id] = {
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            phone: u.phone,
+            collegeCode: u.collegeCode,
+            // departmentId & yearId intentionally omitted from response
+        };
+    }
+
+    // 4. Now fetch ALL students in this institution to compute totalStudents per dept/year
+    //    We query students broadly since departmentId/yearId may be null on students
+    const allStudentsRaw = await User.findAll({
+        where: { institutionId, role: 'student' },
+        attributes: ['id', 'departmentId', 'yearId'],
+    });
+
+    // Build deptId -> yearId -> Set<userId> for totalStudents count
+    // For a student, try to match them to a dept+year in scope
+    const deptIdSet = new Set(departments.map(d => d.id));
+    const yearToDeptId = {};
+    for (const dept of departments) {
+        for (const year of dept.years) {
+            yearToDeptId[year.id] = dept.id;
+        }
+    }
+
+    const studentsByDeptYear = {};
+
+    // Count of all institution students as a fallback denominator when dept/year are unassigned
+    const totalInstitutionStudents = allStudentsRaw.length;
+
+    for (const s of allStudentsRaw) {
+        const deptId = deptIdSet.has(s.departmentId)
+            ? s.departmentId
+            : (s.yearId ? yearToDeptId[s.yearId] : null);
+
+        const yearId = s.yearId
+            || (deptId ? departments.find(d => d.id === deptId)?.years[0]?.id : null);
+
+        if (!deptId || !yearId) continue;
+
+        if (!studentsByDeptYear[deptId]) studentsByDeptYear[deptId] = {};
+        if (!studentsByDeptYear[deptId][yearId]) studentsByDeptYear[deptId][yearId] = new Set();
+        studentsByDeptYear[deptId][yearId].add(s.id);
+    }
+
+
+    // Map: deptId -> yearId -> subjectId -> date -> Map(userId -> StudentDetails)
+    // Use subjectToDeptYear to place each attendance record in the correct dept/year bucket
+    const presenceMap = {};
+    for (const row of attendanceRows) {
+        const location = subjectToDeptYear[row.subjectId];
+        if (!location) continue; // subject not in scope
+
+        const { deptId, yearId } = location;
+        const subId = row.subjectId;
+        const date = formatDate(row.createdAt);
+        const userDetails = studentMap[row.userId];
+
+        // Skip if user is not a student (teacher/admin who joined the session)
+        if (!userDetails) continue;
+
+        if (!presenceMap[deptId]) presenceMap[deptId] = {};
+        if (!presenceMap[deptId][yearId]) presenceMap[deptId][yearId] = {};
+        if (!presenceMap[deptId][yearId][subId]) presenceMap[deptId][yearId][subId] = {};
+        if (!presenceMap[deptId][yearId][subId][date]) presenceMap[deptId][yearId][subId][date] = new Map();
+        
+        if (!presenceMap[deptId][yearId][subId][date].has(row.userId)) {
+            presenceMap[deptId][yearId][subId][date].set(row.userId, userDetails);
+        }
+    }
+
+
+
     // Get all unique dates in the data range
-    const allDates = [...new Set(attendanceRows.map(r => formatDate(r.createdAt)))].sort();
+    let allDates = [...new Set(attendanceRows.map(r => formatDate(r.createdAt)))].sort();
+
+    const queryStart = startDate ? new Date(startDate) : null;
+    const queryEnd = endDate ? new Date(endDate) : null;
+
+    if (queryStart || queryEnd) {
+        const start = queryStart || (allDates.length ? new Date(allDates[0]) : null);
+        const end = queryEnd || (allDates.length ? new Date(allDates[allDates.length - 1]) : null);
+        
+        if (start && end) {
+            const generatedDates = [];
+            const current = new Date(start);
+            while (current <= end) {
+                generatedDates.push(current.toISOString().split('T')[0]);
+                current.setUTCDate(current.getUTCDate() + 1);
+            }
+            allDates = [...new Set([...allDates, ...generatedDates])].sort();
+        }
+    }
+
+    // If no date range provided, from/to will reflect actual data bounds
+    const from = startDate ? new Date(startDate) : (allDates.length ? new Date(allDates[0]) : null);
+    const to   = endDate   ? new Date(endDate)   : (allDates.length ? new Date(allDates[allDates.length - 1]) : null);
 
     // 5. Construct the report tree
     const report = departments.map(dept => ({
@@ -533,30 +658,40 @@ const getDeptYearSubjectDailyAttendance = asyncHandler(async (req, res) => {
             code: dept.departmentCode,
         },
         years: dept.years.map(year => {
-            const yearStudents = studentsByYear[year.id] || new Set();
-            const totalStudents = yearStudents.size;
+            const deptStudents = studentsByDeptYear[dept.id] || {};
+            const yearStudents = deptStudents[year.id] || new Set();
+            // Fall back to total institution students if none are assigned to this dept/year
+            const totalStudents = yearStudents.size || totalInstitutionStudents;
+            
+            const deptPresence = presenceMap[dept.id] || {};
+            const yearPresence = deptPresence[year.id] || {};
             const subjectsList = year.Subjects || year.subjects || [];
 
             const subjects = subjectsList.map(sub => {
-                const subDates = presenceMap[sub.id] || {};
+                const subDates = yearPresence[sub.id] || {};
 
                 const days = allDates.map(date => {
+                    const hasSession = subDates.hasOwnProperty(date);
                     const presentMap = subDates[date] || new Map();
                     const present = presentMap.size;
-                    const absent = totalStudents - present;
+                    const absent = hasSession ? totalStudents - present : 0;
+                    const dayTotal = hasSession ? totalStudents : 0;
                     const studentsPresent = Array.from(presentMap.values());
+                    
                     return {
                         date,
                         present,
                         absent: Math.max(absent, 0),
-                        total: totalStudents,
-                        attendanceRate: totalStudents > 0 ? +((present / totalStudents) * 100).toFixed(1) : 0,
+                        total: dayTotal,
+                        attendanceRate: dayTotal > 0 ? +((present / dayTotal) * 100).toFixed(1) : 0,
+                        isSession: hasSession,
                         studentsPresent,
                     };
                 });
 
-                const avgRate = days.length
-                    ? +(days.reduce((sum, d) => sum + d.attendanceRate, 0) / days.length).toFixed(1)
+                const sessionDays = days.filter(d => d.isSession);
+                const avgRate = sessionDays.length
+                    ? +(sessionDays.reduce((sum, d) => sum + d.attendanceRate, 0) / sessionDays.length).toFixed(1)
                     : 0;
 
                 return {
@@ -581,8 +716,8 @@ const getDeptYearSubjectDailyAttendance = asyncHandler(async (req, res) => {
     return res.json(new ApiResponse(200, {
         report,
         meta: {
-            from: formatDate(from),
-            to:   formatDate(to),
+            from: from ? formatDate(from) : null,
+            to:   to   ? formatDate(to)   : null,
             totalDays: allDates.length,
             dates: allDates,
         },
