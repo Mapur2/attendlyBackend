@@ -1,7 +1,7 @@
-const sendEmail = require('../utils/sendEmail.v2.js');
-const { ApiError } = require('../utils/ApiError');
-const { ApiResponse } = require('../utils/ApiResponse');
-const { asyncHandler } = require('../utils/asyncHandler');
+const sendEmail = require('../utils/sendEmail.js');
+const ApiError = require("../utils/ApiError");
+const ApiResponse = require("../utils/ApiResponse");
+const  asyncHandler  = require('../utils/asyncHandler');
 
 const testSendEmail = asyncHandler(async (req, res) => {
     const { email, message } = req.body;
