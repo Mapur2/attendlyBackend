@@ -25,7 +25,7 @@ app = FastAPI(
 # ============================================================
 
 face_app = FaceAnalysis(
-    name="buffalo_s",                      # ✅ includes detection + recognition
+    name="buffalo_s",                      # includes detection + recognition
     providers=["CPUExecutionProvider"]     # CPU-safe
 )
 
