@@ -4,7 +4,8 @@ on:
   push:
     branches:
       - master # Change to master if applicable
-
+    paths:
+      - 'attendlyBackend/**' # Only run when Python code changes
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
