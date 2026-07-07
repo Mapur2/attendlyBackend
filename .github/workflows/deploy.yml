@@ -6,6 +6,8 @@ on:
       - master # Change to master if applicable
     paths:
       - 'attendlyBackend/**' # Only run when Python code changes
+  workflow_dispatch:
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
