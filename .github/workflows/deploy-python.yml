@@ -1,0 +1,58 @@
+name: Deploy Python ML Service to EC2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'attendlyFaceRecognitionService/**' # Only run when Python code changes
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push Python Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./attendlyFaceRecognitionService
+          file: ./attendlyFaceRecognitionService/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/attendly-ml:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - name: Deploy ML to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+            # Stop and remove the old ML container if it exists
+            docker stop attendly-ml-container || true
+            docker rm attendly-ml-container || true
+
+            # Pull the new Python image
+            docker pull ${{ secrets.DOCKER_USERNAME }}/attendly-ml:latest
+
+            # Run the Python ML container on internal port 8000
+            docker run -d \
+              --name attendly-ml-container \
+              --restart always \
+              -p 8000:8000 \
+              ${{ secrets.DOCKER_USERNAME }}/attendly-ml:latest
+
+            docker image prune -f
