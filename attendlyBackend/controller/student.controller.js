@@ -42,7 +42,7 @@ const studentVerifyFace = asyncHandler(async (req, res) => {
 
     const faceServiceBase = process.env.FACE_SERVICE_URL || "http://localhost:8000";
     const endpoint = `${faceServiceBase.replace(/\/$/, "")}/verify-face`;
-
+    console.log("url :", endpoint)
     const filePath = file.path;
     try {
         const buffer = await fs.readFile(filePath);
