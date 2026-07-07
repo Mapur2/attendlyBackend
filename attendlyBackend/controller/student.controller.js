@@ -40,7 +40,7 @@ const studentVerifyFace = asyncHandler(async (req, res) => {
     const me = await User.findByPk(req.user.id)
     if (!me || !me.faceImageUrl) throw new ApiError(400, "No reference face stored")
 
-    const faceServiceBase = process.env.FACE_SERVICE_URL || "http://127.0.0.1:8000";
+    const faceServiceBase = process.env.FACE_SERVICE_URL || "http://localhost:8000";
     const endpoint = `${faceServiceBase.replace(/\/$/, "")}/verify-face`;
 
     const filePath = file.path;
