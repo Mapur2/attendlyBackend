@@ -3,9 +3,10 @@ name: Deploy Python ML Service to EC2
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - 'attendlyFaceRecognitionService/**' # Only run when Python code changes
+  workflow_dispatch:
 
 jobs:
   build-and-push:
