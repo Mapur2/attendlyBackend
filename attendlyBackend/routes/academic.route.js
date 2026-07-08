@@ -1,5 +1,5 @@
 const express = require('express');
-const { createDepartment, listDepartments, addYear, listYears, addSubject, listSubjects, getCampuses, listStudents, listTeachers, assignStudentYear } = require('../controller/academic.controller');
+const { createDepartment, listDepartments, addYear, listYears, addSubject, listSubjects, getCampuses, listStudents, listTeachers, assignStudentYear, listCourses } = require('../controller/academic.controller');
 const authMiddleware = require('../middleware/authLayer');
 const licenseAuth = require('../middleware/licenseLayer');
 
@@ -537,6 +537,8 @@ router.patch('/students/:userId/assign', authMiddleware, licenseAuth(["admin"]),
  *         description: Unauthorized
  */
 router.get('/teachers', authMiddleware, licenseAuth(["admin", "teacher"]), listTeachers);
+
+router.get('/courses/:institutionCode', listCourses);
 
 module.exports = router;
 

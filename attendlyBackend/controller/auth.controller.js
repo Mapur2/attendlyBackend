@@ -63,17 +63,19 @@ const registerInstitution = asyncHandler(async (req, res) => {
         emailVerified: false,
         isOnboarded: false
     });
-    const otp = generateOtp()
-    await saveOtp(newAdminUser.id, otp);
-    const emailRecieved = await sendEmail(institutionEmail, "Here's your OTP: <b>" + otp + "</b>. Valid for 5 minutes.");
-    if (emailRecieved == null)
-        throw new ApiError(500, "Something went wrong while sending email")
+
+    // not needed
+    // const otp = generateOtp()
+    // await saveOtp(newAdminUser.id, otp);
+    // const emailRecieved = await sendEmail(institutionEmail, "Here's your OTP: <b>" + otp + "</b>. Valid for 5 minutes.");
+    // if (emailRecieved == null)
+    //     throw new ApiError(500, "Something went wrong while sending email")
 
     res.status(201).json(new ApiResponse(201, { newInstitution, admin: newAdminUser }, 'Institution registered successfully. We please verify your email by entering the OTP, sent to you email address'));
 });
 
 const registerStudentTeacher = asyncHandler(async (req, res) => {
-    const { name, email, password, phone, institutionCode, role } = req.body;
+    const { name, email, password, phone, institutionCode, role, departmentId, yearId } = req.body;
 
     if (!name || !email || !password || !phone || !institutionCode || !role) {
         throw new ApiError(400, 'All fields are required');
@@ -87,7 +89,7 @@ const registerStudentTeacher = asyncHandler(async (req, res) => {
 
     const hashedPassword = await hashPassword(password);
 
-    const newUser = await User.create({
+    const userPayload = {
         name,
         email,
         password: hashedPassword,
@@ -97,7 +99,14 @@ const registerStudentTeacher = asyncHandler(async (req, res) => {
         collegeCode: institution.code,
         emailVerified: false,
         isOnboarded: false
-    });
+    };
+
+    if (role === 'student') {
+        if (departmentId) userPayload.departmentId = departmentId;
+        if (yearId) userPayload.yearId = yearId;
+    }
+
+    const newUser = await User.create(userPayload);
 
     if (!newUser) {
         throw new ApiError(500, 'Student registration failed');
@@ -105,11 +114,12 @@ const registerStudentTeacher = asyncHandler(async (req, res) => {
 
     const token = await generateAccessToken(newUser);
 
-    const otp = generateOtp();
-    await saveOtp(newUser.id, otp);
-    const emailRecieved = await sendEmail(email, "Here's your OTP: <b>" + otp + "</b>. Valid for 5 minutes.");
-    if (emailRecieved == null)
-        throw new ApiError(500, "Something went wrong while sending email");
+    //not needed
+    // const otp = generateOtp();
+    // await saveOtp(newUser.id, otp);
+    // const emailRecieved = await sendEmail(email, "Here's your OTP: <b>" + otp + "</b>. Valid for 5 minutes.");
+    // if (emailRecieved == null)
+    //     throw new ApiError(500, "Something went wrong while sending email");
 
 
     res.status(201).json(new ApiResponse(201, { user: newUser, accessToken:token }, 'Student registered successfully. Please verify your email using OTP.'));
@@ -191,7 +201,29 @@ const loginUser = asyncHandler(async (req, res) => {
         );
 });
 
+const loggedInAccount = asyncHandler(async (req, res) => {
+    const { id } = req.user || {};
+
+
+    const user = await User.findOne({ where: { id} });
+    if (!user) throw new ApiError(404, "User does not exist");
+
+
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(
+                200,
+                {
+                    user, 
+                },
+                "User data"
+            )
+        );
+});
+
 
 module.exports = {
-    registerInstitution, verifyUserEmail, loginUser, registerStudentTeacher
+    registerInstitution, verifyUserEmail, loginUser, registerStudentTeacher, loggedInAccount
 };

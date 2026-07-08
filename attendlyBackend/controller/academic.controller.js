@@ -1,7 +1,7 @@
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const asyncHandler = require("../utils/asyncHandler");
-const { Department, Year, Subject, Campus, User } = require("../db/connectDb.js");
+const { Department, Year, Subject, Campus, User, Institution } = require("../db/connectDb.js");
 
 const getCampuses = asyncHandler(async (req, res) => {
   const { institutionId } = req.query || {};
@@ -76,26 +76,16 @@ const listSubjects = asyncHandler(async (req, res) => {
  * Scoped to the caller's institution.
  */
 const listStudents = asyncHandler(async (req, res) => {
-  const { yearId, departmentId, page = 1, limit = 50 } = req.query;
+  const { page = 1, limit = 50 } = req.query;
   const { institutionId } = req.user;
 
-  if (!yearId && !departmentId) {
-    throw new ApiError(400, "Provide at least yearId or departmentId as a query param.");
-  }
-
   const where = { institutionId, role: "student" };
-  if (yearId)       where.yearId       = yearId;
-  if (departmentId) where.departmentId = departmentId;
 
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   const { rows: students, count } = await User.findAndCountAll({
     where,
     attributes: { exclude: ["password"] },
-    include: [
-      { model: Year,       as: "year",       attributes: ["id", "name"] },
-      { model: Department, as: "department",  attributes: ["id", "name", "departmentCode"] },
-    ],
     order: [["name", "ASC"]],
     limit:  parseInt(limit),
     offset,
@@ -176,6 +166,29 @@ const assignStudentYear = asyncHandler(async (req, res) => {
   }, "Student assigned to year and department."));
 });
 
+
+const listCourses = asyncHandler(async (req, res) => {
+  const { institutionCode } = req.params;
+
+  const institution = await Institution.findOne({
+    where: { code: institutionCode },
+    include: [
+      {
+        model: Department,
+        include: [{ model: Year, as: "years" }],
+      },
+    ],
+  });
+
+  if (!institution) {
+    throw new ApiError(404, "Institution not found");
+  }
+
+  return res.json(
+    new ApiResponse(200, { departments: institution.Departments || [] }, "Departments with years fetched")
+  );
+});
+
 module.exports = {
   getCampuses,
   createDepartment,
@@ -187,6 +200,7 @@ module.exports = {
   listStudents,
   listTeachers,
   assignStudentYear,
+  listCourses
 };
 
 

@@ -2,7 +2,8 @@ const express = require('express');
 
 const router = express.Router();
 
-const { registerInstitution, verifyUserEmail, loginUser, registerStudentTeacher } = require('../controller/auth.controller.js');
+const { registerInstitution, verifyUserEmail, loginUser, registerStudentTeacher, loggedInAccount } = require('../controller/auth.controller.js');
+const authMiddleware = require('../middleware/authLayer.js');
 
 /**
  * @swagger
@@ -211,5 +212,7 @@ router.post("/otp/verify-email", verifyUserEmail);
  *               $ref: '#/components/schemas/ApiError'
  */
 router.post("/login", loginUser);
+
+router.get("/me", authMiddleware ,loggedInAccount);
 
 module.exports = router;
