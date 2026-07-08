@@ -76,7 +76,8 @@ app.get("/", (req, res) => {
 
 // Create shared HTTP server (required to attach WebSocket server on same port)
 const server = http.createServer(app);
-
+server.keepAliveTimeout = 90000;
+server.headersTimeout   = 91000;
 
 connectDb().then(() => {
     // Attach WebSocket server after DB is ready so models are available
