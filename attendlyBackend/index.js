@@ -77,6 +77,10 @@ app.get("/", (req, res) => {
 // Create shared HTTP server (required to attach WebSocket server on same port)
 const server = http.createServer(app);
 
+// ✅ ADD THESE TWO LINES — fixes nginx ECONNRESET race condition
+server.keepAliveTimeout = 90000;  // 90 seconds
+server.headersTimeout   = 91000;
+
 connectDb().then(() => {
     // Attach WebSocket server after DB is ready so models are available
     setupWebSocket(server, { ClassNote, User, Subject });
