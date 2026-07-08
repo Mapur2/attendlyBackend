@@ -189,6 +189,36 @@ const listCourses = asyncHandler(async (req, res) => {
   );
 });
 
+/**
+ * GET /academic/summary
+ * Returns count of Students, Faculties, Departments, and Academic Years in the caller's institution.
+ */
+const getInstitutionSummary = asyncHandler(async (req, res) => {
+  const { institutionId } = req.user;
+
+  const [students, faculties, departments] = await Promise.all([
+    User.count({ where: { institutionId, role: "student" } }),
+    User.count({ where: { institutionId, role: "teacher" } }),
+    Department.findAll({ where: { institutionId }, attributes: ['id'] }),
+  ]);
+
+  const departmentCount = departments.length;
+  const departmentIds = departments.map(d => d.id);
+  
+  let academicYears = 0;
+  if (departmentIds.length > 0) {
+    academicYears = await Year.count({ where: { departmentId: departmentIds } });
+  }
+
+  return res.json(new ApiResponse(200, {
+    students,
+    faculties,
+    departments: departmentCount,
+    academicYears
+  }, "Institution summary fetched"));
+});
+
+
 module.exports = {
   getCampuses,
   createDepartment,
@@ -200,7 +230,8 @@ module.exports = {
   listStudents,
   listTeachers,
   assignStudentYear,
-  listCourses
+  listCourses,
+  getInstitutionSummary
 };
 
 

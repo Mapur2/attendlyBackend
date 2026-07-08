@@ -1,5 +1,5 @@
 const express = require('express');
-const { createDepartment, listDepartments, addYear, listYears, addSubject, listSubjects, getCampuses, listStudents, listTeachers, assignStudentYear, listCourses } = require('../controller/academic.controller');
+const { createDepartment, listDepartments, addYear, listYears, addSubject, listSubjects, getCampuses, listStudents, listTeachers, assignStudentYear, listCourses, getInstitutionSummary } = require('../controller/academic.controller');
 const authMiddleware = require('../middleware/authLayer');
 const licenseAuth = require('../middleware/licenseLayer');
 
@@ -539,6 +539,24 @@ router.patch('/students/:userId/assign', authMiddleware, licenseAuth(["admin"]),
 router.get('/teachers', authMiddleware, licenseAuth(["admin", "teacher"]), listTeachers);
 
 router.get('/courses/:institutionCode', listCourses);
+
+/**
+ * @swagger
+ * /academic/summary:
+ *   get:
+ *     summary: Get institution summary
+ *     description: Returns count of students, faculties, departments, and academic years in the user's institution.
+ *     tags: [Academic]
+ *     security:
+ *       - bearerAuth: []
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Summary fetched successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/details', authMiddleware, licenseAuth(["admin", "teacher"]), getInstitutionSummary);
 
 module.exports = router;
 
