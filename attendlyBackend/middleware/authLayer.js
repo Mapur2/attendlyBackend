@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const ApiError = require('../utils/ApiError');
 const { User } = require('../db/connectDb');
 
+
 const authMiddleware = async (req, res, next) => {
     try {
         let token = req?.cookies?.token;

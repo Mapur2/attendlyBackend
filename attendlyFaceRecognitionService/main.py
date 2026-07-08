@@ -163,6 +163,7 @@ async def detect_face(file: UploadFile = File(...)):
 
         duration = (datetime.now() - start_time).total_seconds()
 
+
         return JSONResponse({
             "ok": len(faces) == 1,
             "num_faces": len(faces),
